@@ -7,9 +7,15 @@ export type NoteNodeType = Node<{ note: Note }, 'note'>;
 
 function NoteNodeImpl({ data, selected }: NodeProps<NoteNodeType>) {
   const { t } = useI18n();
-  const { text } = data.note;
+  const { text, fontSize, bold, italic, underline } = data.note;
+  const style: React.CSSProperties = {
+    fontSize,
+    fontWeight: bold ? 700 : undefined,
+    fontStyle: italic ? 'italic' : undefined,
+    textDecoration: underline ? 'underline' : undefined,
+  };
   return (
-    <div className={`note${selected ? ' selected' : ''}${text.trim() ? '' : ' empty'}`}>
+    <div className={`note${selected ? ' selected' : ''}${text.trim() ? '' : ' empty'}`} style={style}>
       {text.trim() ? text : <em>{t.emptyNote}</em>}
     </div>
   );

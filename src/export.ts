@@ -207,7 +207,12 @@ function diagramToSvg(viewport: HTMLElement, bounds: Box, background: string): s
       if (!line.trim()) return;
       const x = b.x + parseFloat(cs.paddingLeft);
       const y = b.y + parseFloat(cs.paddingTop) + lineHeight * (i + 0.5);
-      out.push(`<text x="${num(x)}" y="${num(y)}" dominant-baseline="central" xml:space="preserve" font-size="${parseFloat(cs.fontSize)}" fill="${cs.color}">${esc(line)}</text>`);
+      const style = [
+        cs.fontWeight !== '400' ? `font-weight="${cs.fontWeight}"` : '',
+        cs.fontStyle === 'italic' ? 'font-style="italic"' : '',
+        cs.textDecorationLine.includes('underline') ? 'text-decoration="underline"' : '',
+      ].filter(Boolean);
+      out.push(`<text x="${num(x)}" y="${num(y)}" dominant-baseline="central" xml:space="preserve" font-size="${parseFloat(cs.fontSize)}" ${style.join(' ')} fill="${cs.color}">${esc(line)}</text>`);
     });
   });
 

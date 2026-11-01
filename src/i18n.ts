@@ -113,6 +113,10 @@ const en = {
   // note editor
   note: 'Text',
   emptyNote: 'Empty text',
+  noteSize: 'Size',
+  noteBold: 'Bold',
+  noteItalic: 'Italic',
+  noteUnderline: 'Underline',
   notePlaceholder: 'Author: …\nDate: …',
 
   // entity editor
@@ -255,6 +259,10 @@ const et: Dict = {
 
   note: 'Tekst',
   emptyNote: 'Tühi tekst',
+  noteSize: 'Suurus',
+  noteBold: 'Paks kiri',
+  noteItalic: 'Kaldkiri',
+  noteUnderline: 'Allajoonitud',
   notePlaceholder: 'Autor: …\nKuupäev: …',
 
   entity: 'Olem',

@@ -157,7 +157,7 @@ describe('io', () => {
 
 describe('notes', () => {
   it('survive a save and load', () => {
-    const note = { ...newNote({ x: 10, y: 20 }), text: 'Author: Martin\nDate: 2026-11-01' };
+    const note = { ...newNote({ x: 10, y: 20 }), text: 'Author: Martin\nDate: 2026-11-01', fontSize: 24, bold: true, italic: true };
     const m = { ...exampleModel(), notes: [note] };
     expect(parseModel(serializeModel(m)).notes).toEqual([note]);
   });

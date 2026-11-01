@@ -69,7 +69,16 @@ export function parseModel(text: string): Model {
 
   const notes: Note[] = (Array.isArray(raw.notes) ? raw.notes : []).map((nv): Note => {
     const n = obj(nv);
-    return { id: str(n.id) || uid('n'), text: str(n.text), x: num(n.x), y: num(n.y) };
+    return {
+      id: str(n.id) || uid('n'),
+      text: str(n.text),
+      x: num(n.x),
+      y: num(n.y),
+      fontSize: num(n.fontSize) > 0 ? num(n.fontSize) : undefined,
+      bold: n.bold === true || undefined,
+      italic: n.italic === true || undefined,
+      underline: n.underline === true || undefined,
+    };
   });
 
   return syncForeignKeys({ version: 1, name: str(raw.name, 'Untitled model'), entities, relationships, notes });

@@ -64,6 +64,11 @@ export interface Note {
   text: string;
   x: number;
   y: number;
+  /** Size in px; unset means the default size. */
+  fontSize?: number;
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
 }
 
 export interface Model {

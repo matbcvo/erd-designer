@@ -21,6 +21,8 @@ interface Props {
 
 const COLORS = ['', '#2563eb', '#0f766e', '#7c3aed', '#c2410c', '#be123c', '#4d7c0f', '#475569'];
 const ACTIONS: RefAction[] = ['NO ACTION', 'RESTRICT', 'CASCADE', 'SET NULL'];
+const NOTE_SIZES = [10, 12, 13, 14, 16, 18, 20, 24, 28, 32, 40, 48];
+const DEFAULT_NOTE_SIZE = 13;
 
 export function Inspector(props: Props) {
   const { model, selection } = props;
@@ -79,6 +81,13 @@ function Overview({ model, issues, onSelect }: Props) {
 
 function NoteEditor({ note, update, onDeleteNote }: Props & { note: Note }) {
   const { t } = useI18n();
+  const setNote = (patch: Partial<Note>, key?: string) =>
+    update((m) => ({ ...m, notes: m.notes.map((n) => (n.id === note.id ? { ...n, ...patch } : n)) }), key);
+  const styles = [
+    ['bold', t.noteBold],
+    ['italic', t.noteItalic],
+    ['underline', t.noteUnderline],
+  ] as const;
   return (
     <div className="inspector-body">
       <div className="inspector-title">
@@ -95,11 +104,27 @@ function NoteEditor({ note, update, onDeleteNote }: Props & { note: Note }) {
           autoFocus={!note.text}
           value={note.text}
           placeholder={t.notePlaceholder}
-          onChange={(ev) =>
-            update((m) => ({ ...m, notes: m.notes.map((n) => (n.id === note.id ? { ...n, text: ev.target.value } : n)) }), `note:${note.id}`)
-          }
+          onChange={(ev) => setNote({ text: ev.target.value }, `note:${note.id}`)}
         />
       </label>
+
+      <label className="field">
+        <span>{t.noteSize}</span>
+        <select value={note.fontSize ?? DEFAULT_NOTE_SIZE} onChange={(ev) => setNote({ fontSize: Number(ev.target.value) })}>
+          {NOTE_SIZES.map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      {styles.map(([key, label]) => (
+        <label className="check" key={key}>
+          <input type="checkbox" checked={note[key] ?? false} onChange={(ev) => setNote({ [key]: ev.target.checked || undefined })} />
+          <span>{label}</span>
+        </label>
+      ))}
     </div>
   );
 }
