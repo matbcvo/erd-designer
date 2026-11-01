@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { exampleModel } from './example';
-import { newEntity, newRelationship, resolveManyToMany, syncForeignKeys, deleteRelationships, emptyModel } from './ops';
+import { deleteNotes, newEntity, newNote, newRelationship, resolveManyToMany, syncForeignKeys, deleteRelationships, emptyModel } from './ops';
 import { generateSql, mapType } from './sql';
 import { parseModel, serializeModel } from './io';
 import { validate } from './validate';
@@ -152,5 +152,23 @@ describe('io', () => {
   });
   it('rejects non-models', () => {
     expect(() => parseModel('{"foo":1}')).toThrow();
+  });
+});
+
+describe('notes', () => {
+  it('survive a save and load', () => {
+    const note = { ...newNote({ x: 10, y: 20 }), text: 'Author: Martin\nDate: 2026-11-01' };
+    const m = { ...exampleModel(), notes: [note] };
+    expect(parseModel(serializeModel(m)).notes).toEqual([note]);
+  });
+
+  it('default to none in files saved before notes existed', () => {
+    expect(parseModel(JSON.stringify({ entities: [], relationships: [] })).notes).toEqual([]);
+  });
+
+  it('can be deleted', () => {
+    const note = newNote({ x: 0, y: 0 });
+    const m = { ...emptyModel(), notes: [note] };
+    expect(deleteNotes(m, new Set([note.id])).notes).toEqual([]);
   });
 });

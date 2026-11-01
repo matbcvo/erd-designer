@@ -59,6 +59,8 @@ const en = {
   modelName: 'Model name',
   addEntity: '+ Entity',
   addEntityTitle: 'Add entity (or double-click the canvas)',
+  addNote: '+ Text',
+  addNoteTitle: 'Add text to the diagram, such as author or date',
   undo: 'Undo (Ctrl+Z)',
   redo: 'Redo (Ctrl+Shift+Z)',
   new: 'New',
@@ -99,6 +101,7 @@ const en = {
   howTo: 'How to',
   help: [
     ['Add an entity:', 'toolbar button or double-click the canvas.'],
+    ['Add text:', 'use + Text for things like author and date, then drag it into place. It is included in PNG and SVG exports.'],
     ['Add a relationship:', 'hover an entity and drag one of the blue dots on its sides onto another entity (or onto itself for a self-reference).'],
     ['Edit:', 'click an entity or a line; its properties appear here.'],
     ['Foreign keys', 'are added automatically on the “many” side. Identifying relationships (solid line) make them part of the primary key; non-identifying ones are dashed.'],
@@ -106,6 +109,11 @@ const en = {
     ['Shortcuts:', 'Ctrl+Z undo, Ctrl+Shift+Z / Ctrl+Y redo, Ctrl+S save.'],
     ['Data types', 'can be SQL types or plain words like int, string, datetime, bool; SQL export maps them to the chosen database.'],
   ] as [string, string][],
+
+  // note editor
+  note: 'Text',
+  emptyNote: 'Empty text',
+  notePlaceholder: 'Author: …\nDate: …',
 
   // entity editor
   entity: 'Entity',
@@ -195,6 +203,8 @@ const et: Dict = {
   modelName: 'Mudeli nimi',
   addEntity: '+ Olem',
   addEntityTitle: 'Lisa olem (või topeltklõpsa lõuendil)',
+  addNote: '+ Tekst',
+  addNoteTitle: 'Lisa diagrammile tekst, näiteks autor või kuupäev',
   undo: 'Võta tagasi (Ctrl+Z)',
   redo: 'Tee uuesti (Ctrl+Shift+Z)',
   new: 'Uus',
@@ -234,6 +244,7 @@ const et: Dict = {
   howTo: 'Kasutamine',
   help: [
     ['Olemi lisamine:', 'tööriistariba nupp või topeltklõps lõuendil.'],
+    ['Teksti lisamine:', 'nupp + Tekst lisab näiteks autori või kuupäeva; lohista see sobivasse kohta. Tekst on ka PNG- ja SVG-ekspordis.'],
     ['Seose lisamine:', 'vii hiir olemi kohale ja lohista selle küljel olev sinine punkt teisele olemile (rekursiivse seose jaoks samale olemile).'],
     ['Muutmine:', 'klõpsa olemil või seosel; selle omadused kuvatakse siin.'],
     ['Välisvõtmed', 'lisatakse automaatselt seose „mitu” poolsesse olemisse. Identifitseeriv seos (pidev joon) teeb välisvõtme primaarvõtme osaks; mitteidentifitseeriv seos on katkendjoonega.'],
@@ -241,6 +252,10 @@ const et: Dict = {
     ['Kiirklahvid:', 'Ctrl+Z võta tagasi, Ctrl+Shift+Z / Ctrl+Y tee uuesti, Ctrl+S salvesta.'],
     ['Andmetüübiks', 'sobivad SQL-tüübid või lihtsad sõnad nagu int, string, datetime, bool; SQL-eksport teisendab need valitud andmebaasisüsteemi jaoks.'],
   ],
+
+  note: 'Tekst',
+  emptyNote: 'Tühi tekst',
+  notePlaceholder: 'Autor: …\nKuupäev: …',
 
   entity: 'Olem',
   delete: 'Kustuta',

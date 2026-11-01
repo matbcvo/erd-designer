@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { Attribute, Entity, MaxCardinality, MinCardinality, Model, RefAction, Relationship, Selection } from '../model/types';
+import type { Attribute, Entity, MaxCardinality, MinCardinality, Model, Note, RefAction, Relationship, Selection } from '../model/types';
 import { newAttribute, parentChild, syncForeignKeys, uniqueName } from '../model/ops';
 import { COMMON_TYPES } from '../model/sql';
 import type { Issue } from '../model/validate';
@@ -15,6 +15,7 @@ interface Props {
   onSelect: (s: Selection) => void;
   onDeleteEntity: (id: string) => void;
   onDeleteRelationship: (id: string) => void;
+  onDeleteNote: (id: string) => void;
   onResolveManyToMany: (id: string) => void;
 }
 
@@ -30,6 +31,10 @@ export function Inspector(props: Props) {
   if (selection?.kind === 'relationship') {
     const rel = model.relationships.find((r) => r.id === selection.id);
     if (rel) return <RelationshipEditor key={rel.id} rel={rel} {...props} />;
+  }
+  if (selection?.kind === 'note') {
+    const note = model.notes.find((n) => n.id === selection.id);
+    if (note) return <NoteEditor key={note.id} note={note} {...props} />;
   }
   return <Overview {...props} />;
 }
@@ -66,6 +71,35 @@ function Overview({ model, issues, onSelect }: Props) {
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------- note */
+
+function NoteEditor({ note, update, onDeleteNote }: Props & { note: Note }) {
+  const { t } = useI18n();
+  return (
+    <div className="inspector-body">
+      <div className="inspector-title">
+        <h2>{t.note}</h2>
+        <button className="danger small" onClick={() => onDeleteNote(note.id)}>
+          {t.delete}
+        </button>
+      </div>
+
+      <label className="field">
+        <span>{t.note}</span>
+        <textarea
+          rows={5}
+          autoFocus={!note.text}
+          value={note.text}
+          placeholder={t.notePlaceholder}
+          onChange={(ev) =>
+            update((m) => ({ ...m, notes: m.notes.map((n) => (n.id === note.id ? { ...n, text: ev.target.value } : n)) }), `note:${note.id}`)
+          }
+        />
+      </label>
     </div>
   );
 }

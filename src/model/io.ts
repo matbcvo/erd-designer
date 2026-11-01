@@ -1,4 +1,4 @@
-import type { Attribute, Entity, Model, RefAction, Relationship, RelationshipEnd } from './types';
+import type { Attribute, Entity, Model, Note, RefAction, Relationship, RelationshipEnd } from './types';
 import { syncForeignKeys, uid } from './ops';
 
 const ACTIONS: RefAction[] = ['NO ACTION', 'RESTRICT', 'CASCADE', 'SET NULL'];
@@ -67,7 +67,12 @@ export function parseModel(text: string): Model {
     })
     .filter((r) => ids.has(r.source.entityId) && ids.has(r.target.entityId));
 
-  return syncForeignKeys({ version: 1, name: str(raw.name, 'Untitled model'), entities, relationships });
+  const notes: Note[] = (Array.isArray(raw.notes) ? raw.notes : []).map((nv): Note => {
+    const n = obj(nv);
+    return { id: str(n.id) || uid('n'), text: str(n.text), x: num(n.x), y: num(n.y) };
+  });
+
+  return syncForeignKeys({ version: 1, name: str(raw.name, 'Untitled model'), entities, relationships, notes });
 }
 
 export function serializeModel(model: Model): string {

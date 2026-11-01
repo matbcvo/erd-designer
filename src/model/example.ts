@@ -121,6 +121,7 @@ function baseExample(): Model {
         onUpdate: 'NO ACTION',
       },
     ],
+    notes: [],
   };
   return m;
 }

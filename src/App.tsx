@@ -18,11 +18,12 @@ import './styles.css';
 
 import { useModelStore } from './store';
 import type { Model, Selection } from './model/types';
-import { deleteEntities, deleteRelationships, emptyModel, newEntity, newRelationship, parentChild, resolveManyToMany, syncForeignKeys } from './model/ops';
+import { deleteEntities, deleteNotes, deleteRelationships, emptyModel, newEntity, newNote, newRelationship, parentChild, resolveManyToMany, syncForeignKeys } from './model/ops';
 import { exampleModel } from './model/example';
 import { parseModel, serializeModel } from './model/io';
 import { validate } from './model/validate';
 import { EntityNode, type EntityNodeType } from './components/EntityNode';
+import { NoteNode, type NoteNodeType } from './components/NoteNode';
 import { RelationshipEdge, type RelationshipEdgeType } from './components/RelationshipEdge';
 import { Inspector } from './components/Inspector';
 import { SqlDialog } from './components/SqlDialog';
@@ -34,7 +35,9 @@ import { elbow, nudgeOverlaps, routeAround, segmentsOf, type Pt, type Seg } from
 type Theme = 'system' | 'light' | 'dark';
 const NEXT_THEME: Record<Theme, Theme> = { system: 'light', light: 'dark', dark: 'system' };
 
-const nodeTypes = { entity: EntityNode };
+type AppNode = EntityNodeType | NoteNodeType;
+
+const nodeTypes = { entity: EntityNode, note: NoteNode };
 const edgeTypes = { relationship: RelationshipEdge };
 
 function fkTargetsFor(model: Model) {
@@ -56,7 +59,7 @@ export default function App() {
   const store = useModelStore();
   const { model, update } = store;
   const rf = useReactFlow();
-  const [nodes, setNodes] = useState<EntityNodeType[]>([]);
+  const [nodes, setNodes] = useState<AppNode[]>([]);
   const [edges, setEdges] = useState<RelationshipEdgeType[]>([]);
   const [selection, setSelection] = useState<Selection>(null);
   const [showSql, setShowSql] = useState(false);
@@ -97,21 +100,31 @@ export default function App() {
     const want = pendingSelect.current;
     setNodes((prev) => {
       const byId = new Map(prev.map((n) => [n.id, n]));
-      return model.entities.map((e) => {
-        const old = byId.get(e.id);
+      const entities = model.entities.map((e): EntityNodeType => {
+        const old = byId.get(e.id) as EntityNodeType | undefined;
         const selected = want ? want.kind === 'entity' && want.id === e.id : (old?.selected ?? false);
         const data = { entity: e, fkTargets, showTypes };
         return old
           ? { ...old, position: { x: e.x, y: e.y }, data, selected }
           : { id: e.id, type: 'entity' as const, position: { x: e.x, y: e.y }, data, selected };
       });
+      const notes = model.notes.map((n): NoteNodeType => {
+        const old = byId.get(n.id) as NoteNodeType | undefined;
+        const selected = want ? want.kind === 'note' && want.id === n.id : (old?.selected ?? false);
+        return old
+          ? { ...old, position: { x: n.x, y: n.y }, data: { note: n }, selected }
+          : { id: n.id, type: 'note' as const, position: { x: n.x, y: n.y }, data: { note: n }, selected };
+      });
+      return [...entities, ...notes];
     });
-  }, [model.entities, fkTargets, showTypes]);
+  }, [model.entities, model.notes, fkTargets, showTypes]);
 
   // Attachment ports depend on where entities are, so recompute when nodes move or resize.
   const layout = useMemo(() => {
     const rects = new Map<string, Rect>();
-    for (const n of nodes) rects.set(n.id, { x: n.position.x, y: n.position.y, w: n.measured?.width ?? 200, h: n.measured?.height ?? 100 });
+    for (const n of nodes) {
+      if (n.type === 'entity') rects.set(n.id, { x: n.position.x, y: n.position.y, w: n.measured?.width ?? 200, h: n.measured?.height ?? 100 });
+    }
     const ports = computePorts(rects, model.relationships);
     // Every line is routed with right angles around the entities and away from other lines.
     const routes = new Map<string, Pt[]>();
@@ -162,7 +175,7 @@ export default function App() {
   const select = useCallback(
     (s: Selection) => {
       setSelection(s);
-      setNodes((ns) => ns.map((n) => ({ ...n, selected: s?.kind === 'entity' && s.id === n.id })));
+      setNodes((ns) => ns.map((n) => ({ ...n, selected: s?.kind === n.type && s.id === n.id })));
       setEdges((es) => es.map((e) => ({ ...e, selected: s?.kind === 'relationship' && s.id === e.id })));
       if (s?.kind === 'entity') {
         const n = rf.getNode(s.id);
@@ -176,7 +189,7 @@ export default function App() {
     [rf],
   );
 
-  const onNodesChange = useCallback((changes: NodeChange<EntityNodeType>[]) => {
+  const onNodesChange = useCallback((changes: NodeChange<AppNode>[]) => {
     // Removals go through onDelete so they become one undo step.
     setNodes((ns) => applyNodeChanges(changes.filter((c) => c.type !== 'remove'), ns));
   }, []);
@@ -186,22 +199,21 @@ export default function App() {
   }, []);
 
   const onNodeDragStop = useCallback(
-    (_: unknown, __: unknown, dragged: EntityNodeType[]) => {
+    (_: unknown, __: unknown, dragged: AppNode[]) => {
       const pos = new Map(dragged.map((n) => [n.id, n.position]));
-      update((m) => ({
-        ...m,
-        entities: m.entities.map((e) => {
-          const p = pos.get(e.id);
-          return p && (p.x !== e.x || p.y !== e.y) ? { ...e, x: Math.round(p.x), y: Math.round(p.y) } : e;
-        }),
-      }));
+      const moved = <T extends { id: string; x: number; y: number }>(item: T): T => {
+        const p = pos.get(item.id);
+        return p && (p.x !== item.x || p.y !== item.y) ? { ...item, x: Math.round(p.x), y: Math.round(p.y) } : item;
+      };
+      update((m) => ({ ...m, entities: m.entities.map(moved), notes: m.notes.map(moved) }));
     },
     [update],
   );
 
   const onDelete = useCallback(
-    ({ nodes: dn, edges: de }: { nodes: EntityNodeType[]; edges: RelationshipEdgeType[] }) => {
-      update((m) => deleteRelationships(deleteEntities(m, new Set(dn.map((n) => n.id))), new Set(de.map((e) => e.id))));
+    ({ nodes: dn, edges: de }: { nodes: AppNode[]; edges: RelationshipEdgeType[] }) => {
+      const ids = new Set(dn.map((n) => n.id));
+      update((m) => deleteRelationships(deleteEntities(deleteNotes(m, ids), ids), new Set(de.map((e) => e.id))));
       setSelection(null);
     },
     [update],
@@ -220,7 +232,7 @@ export default function App() {
   );
 
   const onSelectionChange = useCallback(({ nodes: sn, edges: se }: OnSelectionChangeParams) => {
-    if (sn.length === 1 && se.length === 0) setSelection({ kind: 'entity', id: sn[0].id });
+    if (sn.length === 1 && se.length === 0) setSelection({ kind: sn[0].type === 'note' ? 'note' : 'entity', id: sn[0].id });
     else if (se.length === 1 && sn.length === 0) setSelection({ kind: 'relationship', id: se[0].id });
     else setSelection(null);
   }, []);
@@ -239,7 +251,8 @@ export default function App() {
     [update, t],
   );
 
-  const addEntity = () => {
+  /** A free spot near the centre of the view. */
+  const freeSpot = () => {
     const pane = document.querySelector('.react-flow')?.getBoundingClientRect();
     const center = pane
       ? rf.screenToFlowPosition({ x: pane.left + pane.width / 2, y: pane.top + pane.height / 2 })
@@ -260,7 +273,19 @@ export default function App() {
         }
       }
     }
-    addEntityAt(Math.round(spot.x / 10) * 10, Math.round(spot.y / 10) * 10);
+    return { x: Math.round(spot.x / 10) * 10, y: Math.round(spot.y / 10) * 10 };
+  };
+
+  const addEntity = () => {
+    const { x, y } = freeSpot();
+    addEntityAt(x, y);
+  };
+
+  const addNote = () => {
+    const note = newNote(freeSpot());
+    update((m) => ({ ...m, notes: [...m.notes, note] }));
+    pendingSelect.current = { kind: 'note', id: note.id };
+    setSelection({ kind: 'note', id: note.id });
   };
 
   const onPaneClick = useCallback(
@@ -339,6 +364,7 @@ export default function App() {
 
   const errors = issues.filter((i) => i.level === 'error').length;
   const warnings = issues.length - errors;
+  const isEmpty = model.entities.length === 0 && model.notes.length === 0;
 
   return (
     <I18nContext.Provider value={i18n}>
@@ -357,6 +383,9 @@ export default function App() {
           <button className="primary" onClick={addEntity} title={t.addEntityTitle}>
             {t.addEntity}
           </button>
+          <button onClick={addNote} title={t.addNoteTitle}>
+            {t.addNote}
+          </button>
           <button onClick={store.undo} disabled={!store.canUndo} title={t.undo}>
             ↶
           </button>
@@ -367,7 +396,7 @@ export default function App() {
         <div className="group">
           <button
             onClick={() => {
-              if (model.entities.length === 0 || confirm(t.newConfirm)) loadModel(emptyModel(t.newModelName));
+              if (isEmpty || confirm(t.newConfirm)) loadModel(emptyModel(t.newModelName));
             }}
           >
             {t.new}
@@ -430,7 +459,7 @@ export default function App() {
         </button>
         <button
           onClick={() => {
-            if (model.entities.length === 0 || confirm(t.exampleConfirm)) loadModel(exampleModel(lang));
+            if (isEmpty || confirm(t.exampleConfirm)) loadModel(exampleModel(lang));
           }}
         >
           {t.example}
@@ -458,7 +487,7 @@ export default function App() {
         }}
       >
         <div className="canvas">
-          <ReactFlow<EntityNodeType, RelationshipEdgeType>
+          <ReactFlow<AppNode, RelationshipEdgeType>
             nodes={nodes}
             edges={edges}
             nodeTypes={nodeTypes}
@@ -487,7 +516,7 @@ export default function App() {
             <Controls showInteractive={false} />
             <MiniMap pannable zoomable nodeStrokeWidth={2} className="minimap" />
           </ReactFlow>
-          {model.entities.length === 0 && (
+          {isEmpty && (
             <div className="empty-hint">
               <p>{t.emptyHint1}</p>
               <p>
@@ -513,6 +542,10 @@ export default function App() {
             }}
             onDeleteRelationship={(id) => {
               update((m) => deleteRelationships(m, new Set([id])));
+              setSelection(null);
+            }}
+            onDeleteNote={(id) => {
+              update((m) => deleteNotes(m, new Set([id])));
               setSelection(null);
             }}
             onResolveManyToMany={(id) => {

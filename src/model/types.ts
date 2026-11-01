@@ -58,14 +58,24 @@ export interface Relationship {
   onUpdate: RefAction;
 }
 
+/** Free text placed on the diagram, e.g. author and date. */
+export interface Note {
+  id: string;
+  text: string;
+  x: number;
+  y: number;
+}
+
 export interface Model {
   version: 1;
   name: string;
   entities: Entity[];
   relationships: Relationship[];
+  notes: Note[];
 }
 
 export type Selection =
   | { kind: 'entity'; id: string }
   | { kind: 'relationship'; id: string }
+  | { kind: 'note'; id: string }
   | null;

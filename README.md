@@ -15,6 +15,7 @@ A browser-based entity–relationship diagram editor using crow's foot notation.
 - One click to convert a many-to-many relationship into a junction table
 - Plain-language reading of each relationship ("Each Customer places zero or many Order")
 - Model checks: missing primary keys, duplicate names, unresolved many-to-many relationships, recursive relationships that aren't "zero or one – zero or many"
+- Free text on the diagram for things like author and date, included in PNG and SVG exports
 - Undo / redo, autosave in the browser, light and dark theme
 - English and Estonian interface
 

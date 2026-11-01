@@ -1,4 +1,4 @@
-import type { Attribute, Entity, Model, Relationship, RelationshipEnd } from './types';
+import type { Attribute, Entity, Model, Note, Relationship, RelationshipEnd } from './types';
 
 let counter = 0;
 export function uid(prefix: string): string {
@@ -7,7 +7,7 @@ export function uid(prefix: string): string {
 }
 
 export function emptyModel(name = 'Untitled model'): Model {
-  return { version: 1, name, entities: [], relationships: [] };
+  return { version: 1, name, entities: [], relationships: [], notes: [] };
 }
 
 export function newAttribute(partial: Partial<Attribute> = {}): Attribute {
@@ -40,6 +40,10 @@ export function newEntity(model: Model, x: number, y: number, name?: string, bas
     y,
     attributes: [newAttribute({ name: 'id', type: 'SERIAL', pk: true, nullable: false })],
   };
+}
+
+export function newNote(at: { x: number; y: number }): Note {
+  return { id: uid('n'), text: '', ...at };
 }
 
 export function newRelationship(sourceId: string, targetId: string): Relationship {
@@ -224,4 +228,8 @@ export function deleteEntities(model: Model, ids: Set<string>): Model {
 
 export function deleteRelationships(model: Model, ids: Set<string>): Model {
   return syncForeignKeys({ ...model, relationships: model.relationships.filter((r) => !ids.has(r.id)) });
+}
+
+export function deleteNotes(model: Model, ids: Set<string>): Model {
+  return { ...model, notes: model.notes.filter((n) => !ids.has(n.id)) };
 }

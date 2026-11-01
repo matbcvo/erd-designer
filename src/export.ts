@@ -83,7 +83,7 @@ export async function exportImage(nodes: Node[], format: 'png' | 'svg', filename
       transform: `translate(${PAD - bounds.x}px, ${PAD - bounds.y}px) scale(1)`,
     },
     // Leave out interactive-only bits like connection handles.
-    filter: (el: HTMLElement) => !(el.classList && el.classList.contains('react-flow__handle')),
+    filter: (el: HTMLElement) => !(el.classList && (el.classList.contains('react-flow__handle') || el.classList.contains('empty'))),
   });
   downloadDataUrl(dataUrl, filename);
 }
@@ -196,6 +196,19 @@ function diagramToSvg(viewport: HTMLElement, bounds: Box, background: string): s
       tr.querySelectorAll<HTMLElement>('td:not(.attr-keys)').forEach((td) => textOf(td, toFlow(td.getBoundingClientRect())));
     });
     out.push('</g>');
+  });
+
+  // Notes: one <text> per line, since SVG text doesn't break on newlines.
+  viewport.querySelectorAll<HTMLElement>('.react-flow__node .note:not(.empty)').forEach((el) => {
+    const b = toFlow(el.getBoundingClientRect());
+    const cs = getComputedStyle(el);
+    const lineHeight = parseFloat(cs.lineHeight);
+    (el.textContent ?? '').split('\n').forEach((line, i) => {
+      if (!line.trim()) return;
+      const x = b.x + parseFloat(cs.paddingLeft);
+      const y = b.y + parseFloat(cs.paddingTop) + lineHeight * (i + 0.5);
+      out.push(`<text x="${num(x)}" y="${num(y)}" dominant-baseline="central" xml:space="preserve" font-size="${parseFloat(cs.fontSize)}" fill="${cs.color}">${esc(line)}</text>`);
+    });
   });
 
   const w = Math.ceil(bounds.w + PAD * 2);

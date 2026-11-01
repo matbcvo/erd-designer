@@ -562,6 +562,24 @@ code {
   border-radius: 6px;
 }
 
+.note {
+  min-width: 60px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.4;
+  white-space: pre;
+}
+.note.empty {
+  color: var(--muted);
+  outline: 1px dashed var(--border-strong);
+}
+.note.selected {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 .react-flow__handle.connect-handle {
   width: 12px;
   height: 12px;
