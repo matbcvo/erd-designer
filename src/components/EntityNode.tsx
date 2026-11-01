@@ -27,7 +27,7 @@ function EntityNodeImpl({ id, data, selected }: NodeProps<EntityNodeType>) {
   return (
     <div
       className={`entity${selected ? ' selected' : ''}${entity.attributes.length === 0 ? ' no-attrs' : ''}`}
-      style={entity.color ? ({ '--entity-color': entity.color } as React.CSSProperties) : undefined}
+      style={entity.color ? ({ '--entity-color': entity.color, '--header-text': '#ffffff' } as React.CSSProperties) : undefined}
       title={entity.comment}
     >
       <div className="entity-header">{entity.name || <em>{t.unnamed}</em>}</div>

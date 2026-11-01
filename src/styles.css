@@ -8,8 +8,8 @@
   --border-strong: #b9c0cc;
   --accent: #2563eb;
   --accent-soft: #e8efff;
-  --header: #334155;
-  --header-text: #ffffff;
+  --header: #e2e8f0;
+  --header-text: #1e2430;
   --edge: #4b5563;
   --pk: #b45309;
   --fk: #0f766e;
@@ -495,7 +495,7 @@ code {
 .entity-header {
   background: var(--entity-color);
   color: var(--header-text);
-  font-weight: 600;
+  font-weight: 700;
   padding: 6px 12px;
   border-radius: 6px 6px 0 0;
   text-align: center;
