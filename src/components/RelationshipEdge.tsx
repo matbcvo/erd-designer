@@ -9,6 +9,8 @@ export type RelationshipEdgeData = {
   ports?: { source: Port; target: Port };
   /** Right-angle route around other entities. */
   route?: Pt[];
+  /** Drawn like a selected line, e.g. while one of its entities is being dragged. */
+  highlighted?: boolean;
 };
 export type RelationshipEdgeType = Edge<RelationshipEdgeData, 'relationship'>;
 
@@ -93,9 +95,10 @@ export function RelationshipEdge({ id, source, target, data, selected, markerEnd
 
   const a = symbol(p1, u1, rel.source.max, rel.source.min);
   const b = symbol(p2, u2, rel.target.max, rel.target.min);
-  const color = selected ? 'var(--accent)' : 'var(--edge)';
-  const lineStyle = { ...style, stroke: color, strokeWidth: selected ? 2 : 1.5, strokeDasharray: rel.identifying ? undefined : '6 4' };
-  const symStyle = { stroke: color, strokeWidth: selected ? 2 : 1.5, fill: 'none' };
+  const active = selected || data.highlighted;
+  const color = active ? 'var(--accent)' : 'var(--edge)';
+  const lineStyle = { ...style, stroke: color, strokeWidth: active ? 2 : 1.5, strokeDasharray: rel.identifying ? undefined : '6 4' };
+  const symStyle = { stroke: color, strokeWidth: active ? 2 : 1.5, fill: 'none' };
 
   return (
     <>
@@ -107,7 +110,7 @@ export function RelationshipEdge({ id, source, target, data, selected, markerEnd
       {rel.name && (
         <EdgeLabelRenderer>
           <div
-            className={`edge-label${selected ? ' selected' : ''}`}
+            className={`edge-label${active ? ' selected' : ''}`}
             style={{ transform: `translate(-50%, -50%) translate(${label.x}px, ${label.y}px)` }}
           >
             {rel.name}

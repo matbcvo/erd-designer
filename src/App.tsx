@@ -62,6 +62,8 @@ export default function App() {
   const [nodes, setNodes] = useState<AppNode[]>([]);
   const [edges, setEdges] = useState<RelationshipEdgeType[]>([]);
   const [selection, setSelection] = useState<Selection>(null);
+  /** Entities being dragged; their lines are highlighted meanwhile. */
+  const [dragging, setDragging] = useState<Set<string> | null>(null);
   const [showSql, setShowSql] = useState(false);
   const [showTypes, setShowTypes] = useState(true);
   const [lang, setLang] = useState<Lang>(initialLang);
@@ -152,6 +154,7 @@ export default function App() {
       return model.relationships.map((r) => {
         const old = byId.get(r.id);
         const selected = want ? want.kind === 'relationship' && want.id === r.id : (old?.selected ?? false);
+        const highlighted = !!dragging && (dragging.has(r.source.entityId) || dragging.has(r.target.entityId));
         return {
           ...(old ?? {}),
           id: r.id,
@@ -160,12 +163,14 @@ export default function App() {
           target: r.target.entityId,
           sourceHandle: 'out-right',
           targetHandle: 'in',
-          data: { relationship: r, ports: layout.ports.get(r.id), route: layout.routes.get(r.id) },
+          data: { relationship: r, ports: layout.ports.get(r.id), route: layout.routes.get(r.id), highlighted },
           selected,
+          // Draw highlighted lines above the others.
+          zIndex: highlighted ? 1 : 0,
         };
       });
     });
-  }, [model.relationships, layout]);
+  }, [model.relationships, layout, dragging]);
 
   // A pending programmatic selection applies to the render that follows one model change.
   useEffect(() => {
@@ -198,8 +203,13 @@ export default function App() {
     setEdges((es) => applyEdgeChanges(changes.filter((c) => c.type !== 'remove'), es));
   }, []);
 
+  const onNodeDragStart = useCallback((_: unknown, __: unknown, dragged: AppNode[]) => {
+    setDragging(new Set(dragged.map((n) => n.id)));
+  }, []);
+
   const onNodeDragStop = useCallback(
     (_: unknown, __: unknown, dragged: AppNode[]) => {
+      setDragging(null);
       const pos = new Map(dragged.map((n) => [n.id, n.position]));
       const moved = <T extends { id: string; x: number; y: number }>(item: T): T => {
         const p = pos.get(item.id);
@@ -494,6 +504,7 @@ export default function App() {
             edgeTypes={edgeTypes}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
+            onNodeDragStart={onNodeDragStart}
             onNodeDragStop={onNodeDragStop}
             onDelete={onDelete}
             onConnect={onConnect}
