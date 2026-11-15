@@ -75,8 +75,13 @@ export function RelationshipEdge({ id, source, target, data, selected, markerEnd
   let label: Pt;
   let vertical = false;
 
-  if (source === target) {
-    // Self-reference: a compact loop around the top-right corner.
+  if (source === target && route) {
+    // Self-reference: its loop round the top-right corner comes from the layout too.
+    path = polylinePath(route, CORNER_RADIUS);
+    label = data.label ?? route[2];
+    vertical = data.label?.vertical ?? false;
+  } else if (source === target) {
+    // Self-reference without a layout yet: a compact loop around the top-right corner.
     const inset = Math.min(32, sr.w / 3, sr.h / 3);
     const reach = 46;
     const a0 = { x: sr.x + sr.w - inset, y: sr.y };

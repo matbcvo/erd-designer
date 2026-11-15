@@ -62,6 +62,9 @@ function pickSide(preferred: Side, self: Rect, other: Rect, blockers: Rect[]): S
   return sideCandidates(preferred, self, other).find((s) => !sideBlocked(self, s, blockers)) ?? preferred;
 }
 
+/** How far from the corner a self-reference loop leaves and enters its entity. */
+const SELF_INSET = 32;
+
 /** Minimum distance between two lines on one side, so their crow's foot symbols don't touch. */
 const MIN_PORT_GAP = 20;
 
@@ -165,10 +168,17 @@ export function computePorts(rects: Map<string, Rect>, relationships: Relationsh
 
   const out = new Map<string, { source: Port; target: Port }>();
   for (const [relId, s] of sides) {
-    out.set(relId, {
-      source: { side: s.source, f: fractions.get(`${relId}|source`) ?? 0.5 },
-      target: { side: s.target, f: fractions.get(`${relId}|target`) ?? 0.5 },
-    });
+    let f1 = fractions.get(`${relId}|source`) ?? 0.5;
+    let f2 = fractions.get(`${relId}|target`) ?? 0.5;
+    const rel = relationships.find((r) => r.id === relId);
+    const rect = rel && rel.source.entityId === rel.target.entityId ? rects.get(rel.source.entityId) : undefined;
+    if (rect) {
+      // A self-reference loop stays tucked into the top-right corner (it is already the
+      // outermost line on both sides, so moving it toward the corner keeps the order).
+      f1 = Math.max(f1, 1 - SELF_INSET / (rect.w - 2 * padX(rect)));
+      f2 = Math.min(f2, SELF_INSET / (rect.h - 2 * padY(rect)));
+    }
+    out.set(relId, { source: { side: s.source, f: Math.min(1, f1) }, target: { side: s.target, f: Math.max(0, f2) } });
   }
   return out;
 }

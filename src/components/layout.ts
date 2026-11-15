@@ -40,25 +40,46 @@ function symbolsOf(rects: Map<string, Rect>, r: Relationship, pr: { source: Port
   });
 }
 
+const isSelf = (r: Relationship) => r.source.entityId === r.target.entityId;
+
+/** How far a self-reference loop reaches out from its entity's top and right sides. */
+const SELF_REACH = 46;
+
+/** Self-reference: a compact loop from its port on the top side round the corner to its port on the right side. */
+function selfLoop(rect: Rect, pr: { source: Port; target: Port }): Pt[] {
+  const a = portPoint(rect, pr.source).p;
+  const b = portPoint(rect, pr.target).p;
+  const top = rect.y - SELF_REACH;
+  const right = rect.x + rect.w + SELF_REACH;
+  return [a, { x: a.x, y: top }, { x: right, y: top }, { x: right, y: b.y }, b];
+}
+
 function routeAll(rects: Map<string, Rect>, relationships: Relationship[], ports: Ports): Map<string, Pt[]> {
   // Every line is routed with right angles around the entities and away from other lines,
   // including the exits of lines not routed yet, so earlier lines don't block them.
-  const todo = relationships.filter((r) => r.source.entityId !== r.target.entityId && rects.has(r.source.entityId) && rects.has(r.target.entityId) && ports.has(r.id));
+  const usable = relationships.filter((r) => rects.has(r.source.entityId) && rects.has(r.target.entityId) && ports.has(r.id));
+  const todo = usable.filter((r) => !isSelf(r));
   const exits = new Map(todo.map((r) => [r.id, exitsOf(rects, r, ports.get(r.id)!)]));
-  const symbols = new Map(todo.map((r) => [r.id, symbolsOf(rects, r, ports.get(r.id)!)]));
+  const symbols = new Map(usable.map((r) => [r.id, symbolsOf(rects, r, ports.get(r.id)!)]));
   const routes = new Map<string, Pt[]>();
   const occupied: Seg[] = [];
+  // Self-reference loops have a fixed shape: place them first so other lines keep clear of them.
+  for (const r of usable.filter(isSelf)) {
+    const loop = selfLoop(rects.get(r.source.entityId)!, ports.get(r.id)!);
+    routes.set(r.id, loop);
+    occupied.push(...segmentsOf(loop));
+  }
   todo.forEach((r, i) => {
     const pr = ports.get(r.id)!;
     const A = portPoint(rects.get(r.source.entityId)!, pr.source);
     const B = portPoint(rects.get(r.target.entityId)!, pr.target);
     const pending = todo.slice(i + 1).flatMap((o) => exits.get(o.id)!);
-    const otherSymbols = todo.filter((o) => o !== r).flatMap((o) => symbols.get(o.id)!);
+    const otherSymbols = usable.filter((o) => o !== r).flatMap((o) => symbols.get(o.id)!);
     const route = routeAround(A.p, A.u, B.p, B.u, [...rects.values()], [...occupied, ...pending], otherSymbols) ?? elbow(A.p, A.u, B.p, B.u);
     routes.set(r.id, route);
     occupied.push(...segmentsOf(route));
   });
-  nudgeOverlaps([...routes.values()]);
+  nudgeOverlaps(todo.map((r) => routes.get(r.id)!));
   return routes;
 }
 
@@ -135,7 +156,7 @@ function untangleEnds(rects: Map<string, Rect>, relationships: Relationship[], l
   const groups = new Map<string, End[]>();
   for (const r of relationships) {
     const pr = ports.get(r.id);
-    if (!pr || !routes.has(r.id)) continue;
+    if (!pr || !routes.has(r.id) || isSelf(r)) continue;
     for (const end of ['source', 'target'] as const) {
       const entityId = r[end].entityId;
       const k = `${entityId}|${pr[end].side}`;
@@ -206,7 +227,7 @@ function swapCrossingNeighbours(rects: Map<string, Rect>, relationships: Relatio
   const groups = new Map<string, End[]>();
   for (const r of relationships) {
     const pr = ports.get(r.id);
-    if (!pr || !routes.has(r.id)) continue;
+    if (!pr || !routes.has(r.id) || isSelf(r)) continue;
     for (const end of ['source', 'target'] as const) {
       const k = `${r[end].entityId}|${pr[end].side}`;
       const g = groups.get(k);
@@ -291,6 +312,7 @@ function polish(rects: Map<string, Rect>, relationships: Relationship[], layout:
   const symbols = new Map([...routes.keys()].map((id) => [id, symbolsOf(rects, byId.get(id)!, layout.ports.get(id)!)]));
   const obstacles = [...rects.values()];
   for (const id of routes.keys()) {
+    if (isSelf(byId.get(id)!)) continue;
     const pr = layout.ports.get(id)!;
     const was = routedPorts.get(id);
     const moved = !was || was.source.f !== pr.source.f || was.target.f !== pr.target.f || was.source.side !== pr.source.side || was.target.side !== pr.target.side;
@@ -352,13 +374,6 @@ function placeLabels(rects: Map<string, Rect>, relationships: Relationship[], la
       const y2 = p.y + u.y * 34;
       symbols.push({ x: Math.min(p.x, x2) - (u.x ? 0 : 11), y: Math.min(p.y, y2) - (u.y ? 0 : 11), w: Math.abs(x2 - p.x) || 22, h: Math.abs(y2 - p.y) || 22 });
     }
-  }
-  // Self-reference labels sit at the corner of their loop (see RelationshipEdge).
-  for (const r of relationships) {
-    const rect = rects.get(r.source.entityId);
-    if (r.source.entityId !== r.target.entityId || !r.name.trim() || !rect) continue;
-    const w = measure(r.name) + LABEL_PAD;
-    placed.push({ x: rect.x + rect.w + 46 - w / 2, y: rect.y - 46 - LABEL_H / 2, w, h: LABEL_H });
   }
   const segs = new Map([...layout.routes].map(([id, pts]) => [id, segmentsOf(pts)]));
 
@@ -460,7 +475,7 @@ function placeLabels(rects: Map<string, Rect>, relationships: Relationship[], la
 }
 
 /**
- * Attachment ports, right-angle routes and label positions for every relationship line (self-references excluded).
+ * Attachment ports, right-angle routes and label positions for every relationship line.
  * `quick` skips the slowest clean-up step, for use while an entity is being dragged.
  */
 export function layoutDiagram(rects: Map<string, Rect>, relationships: Relationship[], measure: MeasureText = roughMeasure, quick = false): Layout {
