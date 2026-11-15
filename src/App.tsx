@@ -140,8 +140,9 @@ export default function App() {
     for (const n of nodes) {
       if (n.type === 'entity') rects.set(n.id, { x: n.position.x, y: n.position.y, w: n.measured?.width ?? 200, h: n.measured?.height ?? 100 });
     }
-    return layoutDiagram(rects, model.relationships, measureLabel);
-  }, [nodes, model.relationships]);
+    // While dragging, skip the slowest clean-up so the drag stays smooth; it runs on drop.
+    return layoutDiagram(rects, model.relationships, measureLabel, !!dragging);
+  }, [nodes, model.relationships, dragging]);
 
   useEffect(() => {
     const want = pendingSelect.current;
