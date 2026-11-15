@@ -82,8 +82,10 @@ export function segmentsOf(pts: Pt[]): Seg[] {
 const OVERLAP_PENALTY = 80;
 /** Cost of crossing another line: worth a detour of about this many px. */
 const CROSS_PENALTY = 90;
+/** Cost of passing through another line's crow's foot symbol. */
+const SYMBOL_PENALTY = 300;
 
-export function routeAround(p1: Pt, u1: Pt, p2: Pt, u2: Pt, obstacles: Rect[], occupied: Seg[] = []): Pt[] | null {
+export function routeAround(p1: Pt, u1: Pt, p2: Pt, u2: Pt, obstacles: Rect[], occupied: Seg[] = [], symbols: Rect[] = []): Pt[] | null {
   const inRaw = (q: Pt, r: Rect) => q.x > r.x && q.x < r.x + r.w && q.y > r.y && q.y < r.y + r.h;
   // Shorten a stub that would run into a neighbouring entity.
   const stubFor = (p: Pt, u: Pt) => {
@@ -170,6 +172,22 @@ export function routeAround(p1: Pt, u1: Pt, p2: Pt, u2: Pt, obstacles: Rect[], o
   const hMidBlocked = new Int8Array(W * H).fill(-1);
   const vMidBlocked = new Int8Array(W * H).fill(-1);
 
+  // Steps passing through other lines' crow's foot symbols.
+  const hSymbol = new Uint16Array(W * H);
+  const vSymbol = new Uint16Array(W * H);
+  for (const b of symbols) {
+    for (let iy = lowerIndex(Y, b.y + 0.5); iy < H && Y[iy] < b.y + b.h - 0.5; iy++) {
+      for (let ix = Math.max(0, lowerIndex(X, b.x) - 1); ix < W - 1 && X[ix] < b.x + b.w; ix++) {
+        if (X[ix + 1] > b.x) hSymbol[iy * W + ix]++;
+      }
+    }
+    for (let ix = lowerIndex(X, b.x + 0.5); ix < W && X[ix] < b.x + b.w - 0.5; ix++) {
+      for (let iy = Math.max(0, lowerIndex(Y, b.y) - 1); iy < H - 1 && Y[iy] < b.y + b.h; iy++) {
+        if (Y[iy + 1] > b.y) vSymbol[ix * H + iy]++;
+      }
+    }
+  }
+
   const startDir = dirIndex(u1);
   const endDir = dirIndex({ x: -u2.x, y: -u2.y }); // direction of travel arriving at e
   const n = W * H * 4;
@@ -207,6 +225,7 @@ export function routeAround(p1: Pt, u1: Pt, p2: Pt, u2: Pt, obstacles: Rect[], o
       if (midBlocked[mid]) continue;
       const len = Math.abs(X[jx] - X[ix]) + Math.abs(Y[jy] - Y[iy]);
       let c = cost[st] + len + (nd === d ? 0 : BEND_PENALTY);
+      c += (nd === 0 || nd === 2 ? hSymbol[iy * W + Math.min(ix, jx)] : vSymbol[ix * H + Math.min(iy, jy)]) * SYMBOL_PENALTY;
       if (occupied.length) {
         // Discourage running along a lane another line already uses, and crossing other lines.
         if (nd === 0 || nd === 2) {

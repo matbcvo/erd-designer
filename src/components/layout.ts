@@ -28,11 +28,24 @@ function exitsOf(rects: Map<string, Rect>, r: Relationship, pr: { source: Port; 
   });
 }
 
+/** Area taken by the crow's foot symbols at a line's two ends (they reach ~31px out and ~9px to each side). */
+function symbolsOf(rects: Map<string, Rect>, r: Relationship, pr: { source: Port; target: Port }): Rect[] {
+  return (['source', 'target'] as const).map((end) => {
+    const { p, u } = portPoint(rects.get(r[end].entityId)!, pr[end]);
+    const out = 36;
+    const half = 12;
+    return u.y === 0
+      ? { x: Math.min(p.x, p.x + u.x * out), y: p.y - half, w: out, h: 2 * half }
+      : { x: p.x - half, y: Math.min(p.y, p.y + u.y * out), w: 2 * half, h: out };
+  });
+}
+
 function routeAll(rects: Map<string, Rect>, relationships: Relationship[], ports: Ports): Map<string, Pt[]> {
   // Every line is routed with right angles around the entities and away from other lines,
   // including the exits of lines not routed yet, so earlier lines don't block them.
   const todo = relationships.filter((r) => r.source.entityId !== r.target.entityId && rects.has(r.source.entityId) && rects.has(r.target.entityId) && ports.has(r.id));
   const exits = new Map(todo.map((r) => [r.id, exitsOf(rects, r, ports.get(r.id)!)]));
+  const symbols = new Map(todo.map((r) => [r.id, symbolsOf(rects, r, ports.get(r.id)!)]));
   const routes = new Map<string, Pt[]>();
   const occupied: Seg[] = [];
   todo.forEach((r, i) => {
@@ -40,7 +53,8 @@ function routeAll(rects: Map<string, Rect>, relationships: Relationship[], ports
     const A = portPoint(rects.get(r.source.entityId)!, pr.source);
     const B = portPoint(rects.get(r.target.entityId)!, pr.target);
     const pending = todo.slice(i + 1).flatMap((o) => exits.get(o.id)!);
-    const route = routeAround(A.p, A.u, B.p, B.u, [...rects.values()], [...occupied, ...pending]) ?? elbow(A.p, A.u, B.p, B.u);
+    const otherSymbols = todo.filter((o) => o !== r).flatMap((o) => symbols.get(o.id)!);
+    const route = routeAround(A.p, A.u, B.p, B.u, [...rects.values()], [...occupied, ...pending], otherSymbols) ?? elbow(A.p, A.u, B.p, B.u);
     routes.set(r.id, route);
     occupied.push(...segmentsOf(route));
   });
@@ -170,9 +184,9 @@ function untangleEnds(rects: Map<string, Rect>, relationships: Relationship[], l
 }
 
 /**
- * Two neighbouring lines on an entity side that cross each other: try them the other way round,
- * re-routing just those two, and keep it if that crosses less. (Re-ordering the ends alone is not
- * always enough: which line turns on which lane matters too.)
+ * Two neighbouring lines on an entity side that cross each other: re-route just those two, with their
+ * ends swapped or not and either one routed first (which decides who gets which lane), and keep the
+ * variant that crosses least. Re-ordering the ends alone is not always enough: lanes matter too.
  */
 function swapCrossingNeighbours(rects: Map<string, Rect>, relationships: Relationship[], layout: Omit<Layout, 'labels'>): Omit<Layout, 'labels'> {
   const ports: Ports = new Map([...layout.ports].map(([id, p]) => [id, { ...p }]));
@@ -180,11 +194,12 @@ function swapCrossingNeighbours(rects: Map<string, Rect>, relationships: Relatio
   const segs = new Map([...routes].map(([id, r]) => [id, segmentsOf(r)]));
   const byId = new Map(relationships.map((r) => [r.id, r]));
   const obstacles = [...rects.values()];
-  const route = (id: string, pr: { source: Port; target: Port }, occupied: Seg[]) => {
+  const symbols = new Map([...routes.keys()].map((id) => [id, symbolsOf(rects, byId.get(id)!, ports.get(id)!)]));
+  const route = (id: string, pr: { source: Port; target: Port }, occupied: Seg[], otherSymbols: Rect[]) => {
     const r = byId.get(id)!;
     const A = portPoint(rects.get(r.source.entityId)!, pr.source);
     const B = portPoint(rects.get(r.target.entityId)!, pr.target);
-    return routeAround(A.p, A.u, B.p, B.u, obstacles, occupied) ?? elbow(A.p, A.u, B.p, B.u);
+    return routeAround(A.p, A.u, B.p, B.u, obstacles, occupied, otherSymbols) ?? elbow(A.p, A.u, B.p, B.u);
   };
 
   type End = { relId: string; end: 'source' | 'target' };
@@ -206,28 +221,101 @@ function swapCrossingNeighbours(rects: Map<string, Rect>, relationships: Relatio
       const [a, b] = [g[i], g[i + 1]];
       if (a.relId === b.relId || crossingsBetween(segs.get(a.relId)!, segs.get(b.relId)!) === 0) continue;
       const ids = new Set([a.relId, b.relId]);
-      const before = crossingsOf(ids, segs);
-      const pa = { ...ports.get(a.relId)! };
-      const pb = { ...ports.get(b.relId)! };
-      [pa[a.end], pb[b.end]] = [pb[b.end], pa[a.end]];
+      let best = { crossings: crossingsOf(ids, segs), apply: () => {} };
       const others = [...segs].filter(([id]) => !ids.has(id)).flatMap(([, s]) => s);
-      const ra = route(a.relId, pa, [...others, ...exitsOf(rects, byId.get(b.relId)!, pb)]);
-      const rb = route(b.relId, pb, [...others, ...segmentsOf(ra)]);
-      const trial = new Map(segs);
-      trial.set(a.relId, segmentsOf(ra));
-      trial.set(b.relId, segmentsOf(rb));
-      if (crossingsOf(ids, trial) < before) {
-        ports.set(a.relId, pa);
-        ports.set(b.relId, pb);
-        routes.set(a.relId, ra);
-        routes.set(b.relId, rb);
-        segs.set(a.relId, trial.get(a.relId)!);
-        segs.set(b.relId, trial.get(b.relId)!);
-        [g[i], g[i + 1]] = [b, a];
+      const otherSymbols = [...symbols].filter(([id]) => !ids.has(id)).flatMap(([, s]) => s);
+      for (const swap of [true, false]) {
+        const pa = { ...ports.get(a.relId)! };
+        const pb = { ...ports.get(b.relId)! };
+        if (swap) [pa[a.end], pb[b.end]] = [pb[b.end], pa[a.end]];
+        for (const [first, second] of [[a, b], [b, a]]) {
+          const pf = first === a ? pa : pb;
+          const ps = first === a ? pb : pa;
+          const sf = symbolsOf(rects, byId.get(first.relId)!, pf);
+          const ss = symbolsOf(rects, byId.get(second.relId)!, ps);
+          const rf = route(first.relId, pf, [...others, ...exitsOf(rects, byId.get(second.relId)!, ps)], [...otherSymbols, ...ss]);
+          const rs = route(second.relId, ps, [...others, ...segmentsOf(rf)], [...otherSymbols, ...sf]);
+          const trial = new Map(segs);
+          trial.set(first.relId, segmentsOf(rf));
+          trial.set(second.relId, segmentsOf(rs));
+          const crossings = crossingsOf(ids, trial);
+          if (crossings < best.crossings) {
+            best = {
+              crossings,
+              apply: () => {
+                ports.set(first.relId, pf);
+                ports.set(second.relId, ps);
+                routes.set(first.relId, rf);
+                routes.set(second.relId, rs);
+                segs.set(first.relId, trial.get(first.relId)!);
+                segs.set(second.relId, trial.get(second.relId)!);
+                symbols.set(first.relId, sf);
+                symbols.set(second.relId, ss);
+                if (swap) [g[i], g[i + 1]] = [b, a];
+              },
+            };
+          }
+        }
       }
+      best.apply();
     }
   }
   return { ports, routes };
+}
+
+/** Times a route passes through one of the given crow's foot areas. */
+function symbolHits(segs: Seg[], symbols: Rect[]): number {
+  let n = 0;
+  for (const s of segs) {
+    for (const b of symbols) {
+      const inside = s.horizontal
+        ? s.at > b.y + 0.5 && s.at < b.y + b.h - 0.5 && s.from < b.x + b.w && s.to > b.x
+        : s.at > b.x + 0.5 && s.at < b.x + b.w - 0.5 && s.from < b.y + b.h && s.to > b.y;
+      if (inside) n++;
+    }
+  }
+  return n;
+}
+
+const routeCost = (pts: Pt[]) => pts.slice(1).reduce((c, p, i) => c + Math.abs(p.x - pts[i].x) + Math.abs(p.y - pts[i].y), 0) + (pts.length - 2) * 60;
+
+/**
+ * Last pass: re-route on its own each line whose ends were moved after routing, or that passes
+ * through another line's crow's foot, with every other line in place. Keep the new route if it
+ * crosses no more lines and is cleaner (through fewer symbols, or shorter with fewer bends).
+ */
+function polish(rects: Map<string, Rect>, relationships: Relationship[], layout: Omit<Layout, 'labels'>, routedPorts: Ports): Omit<Layout, 'labels'> {
+  const routes = new Map(layout.routes);
+  const segs = new Map([...routes].map(([id, r]) => [id, segmentsOf(r)]));
+  const byId = new Map(relationships.map((r) => [r.id, r]));
+  const symbols = new Map([...routes.keys()].map((id) => [id, symbolsOf(rects, byId.get(id)!, layout.ports.get(id)!)]));
+  const obstacles = [...rects.values()];
+  for (const id of routes.keys()) {
+    const pr = layout.ports.get(id)!;
+    const was = routedPorts.get(id);
+    const moved = !was || was.source.f !== pr.source.f || was.target.f !== pr.target.f || was.source.side !== pr.source.side || was.target.side !== pr.target.side;
+    const otherSymbols = [...symbols].filter(([o]) => o !== id).flatMap(([, s]) => s);
+    const hits = symbolHits(segs.get(id)!, otherSymbols);
+    if (!moved && hits === 0) continue;
+    const r = byId.get(id)!;
+    const A = portPoint(rects.get(r.source.entityId)!, pr.source);
+    const B = portPoint(rects.get(r.target.entityId)!, pr.target);
+    const others = [...segs].filter(([o]) => o !== id).flatMap(([, s]) => s);
+    const next = routeAround(A.p, A.u, B.p, B.u, obstacles, others, otherSymbols);
+    if (!next) continue;
+    const ids = new Set([id]);
+    const trial = new Map(segs);
+    trial.set(id, segmentsOf(next));
+    const before = crossingsOf(ids, segs);
+    const after = crossingsOf(ids, trial);
+    const nextHits = symbolHits(trial.get(id)!, otherSymbols);
+    const better = after < before || (after === before && (nextHits < hits || (nextHits === hits && routeCost(next) < routeCost(routes.get(id)!) - 1)));
+    if (better && after <= before && nextHits <= hits) {
+      routes.set(id, next);
+      segs.set(id, trial.get(id)!);
+    }
+  }
+  return { ports: layout.ports, routes };
 }
 
 type Box = { x: number; y: number; w: number; h: number };
@@ -378,7 +466,7 @@ function placeLabels(rects: Map<string, Rect>, relationships: Relationship[], la
 export function layoutDiagram(rects: Map<string, Rect>, relationships: Relationship[], measure: MeasureText = roughMeasure, quick = false): Layout {
   const ports = computePorts(rects, relationships);
   let layout = untangleEnds(rects, relationships, { ports, routes: routeAll(rects, relationships, ports) });
-  if (!quick) layout = swapCrossingNeighbours(rects, relationships, layout);
+  if (!quick) layout = polish(rects, relationships, swapCrossingNeighbours(rects, relationships, layout), ports);
   const labels = placeLabels(rects, relationships, layout, measure);
   return { ...layout, labels };
 }
