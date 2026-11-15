@@ -7,8 +7,8 @@ export interface Pt {
 
 /* --------------------------------------------------------- orthogonal router */
 
-const MARGIN = 36; // clearance kept around entities: wider than the crow's foot symbols (~32px)
-export const STUB = 44; // straight run out of each port, leaves room for the crow's foot symbols
+const MARGIN = 48; // clearance kept around entities: the crow's foot symbols reach ~31px, plus room to spare
+export const STUB = 52; // straight run out of each port, past the crow's foot symbols and the clearance
 const BEND_PENALTY = 60;
 
 class MinHeap {
@@ -80,6 +80,8 @@ export function segmentsOf(pts: Pt[]): Seg[] {
 }
 
 const OVERLAP_PENALTY = 80;
+/** Cost of crossing another line: worth a detour of about this many px. */
+const CROSS_PENALTY = 90;
 
 export function routeAround(p1: Pt, u1: Pt, p2: Pt, u2: Pt, obstacles: Rect[], occupied: Seg[] = []): Pt[] | null {
   const inRaw = (q: Pt, r: Rect) => q.x > r.x && q.x < r.x + r.w && q.y > r.y && q.y < r.y + r.h;
@@ -154,15 +156,21 @@ export function routeAround(p1: Pt, u1: Pt, p2: Pt, u2: Pt, obstacles: Rect[], o
       const len = Math.abs(X[jx] - X[ix]) + Math.abs(Y[jy] - Y[iy]);
       let c = cost[st] + len + (nd === d ? 0 : BEND_PENALTY);
       if (occupied.length) {
-        // Discourage running along a lane another line already uses.
         const horizontal = nd === 0 || nd === 2;
         const at = horizontal ? Y[iy] : X[ix];
         const lo = horizontal ? Math.min(X[ix], X[jx]) : Math.min(Y[iy], Y[jy]);
         const hi = horizontal ? Math.max(X[ix], X[jx]) : Math.max(Y[iy], Y[jy]);
+        let overlap = false;
         for (const o of occupied) {
-          if (o.horizontal === horizontal && Math.abs(o.at - at) < 6 && o.from < hi - 0.5 && o.to > lo + 0.5) {
-            c += OVERLAP_PENALTY + len;
-            break;
+          if (o.horizontal === horizontal) {
+            // Discourage running along a lane another line already uses.
+            if (!overlap && Math.abs(o.at - at) < 6 && o.from < hi - 0.5 && o.to > lo + 0.5) {
+              c += OVERLAP_PENALTY + len;
+              overlap = true;
+            }
+          } else if (o.at > lo + 0.5 && o.at <= hi + 0.5 && at > o.from + 0.5 && at < o.to - 0.5) {
+            // ...and crossing other lines. Counted where this step reaches the other line.
+            c += CROSS_PENALTY;
           }
         }
       }

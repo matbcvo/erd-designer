@@ -28,9 +28,10 @@ import { RelationshipEdge, type RelationshipEdgeType } from './components/Relati
 import { Inspector } from './components/Inspector';
 import { SqlDialog } from './components/SqlDialog';
 import { downloadText, exportImage, slug } from './export';
-import { computePorts, portPoint, type Rect } from './components/ports';
+import { SHARE_PREFIX, decodeModel, shareUrl } from './share';
+import type { Rect } from './components/ports';
+import { layoutDiagram } from './components/layout';
 import { DICTS, I18nContext, LANGS, initialLang, saveLang, type Lang } from './i18n';
-import { elbow, nudgeOverlaps, routeAround, segmentsOf, type Pt, type Seg } from './components/routing';
 
 type Theme = 'system' | 'light' | 'dark';
 const NEXT_THEME: Record<Theme, Theme> = { system: 'light', light: 'dark', dark: 'system' };
@@ -127,24 +128,7 @@ export default function App() {
     for (const n of nodes) {
       if (n.type === 'entity') rects.set(n.id, { x: n.position.x, y: n.position.y, w: n.measured?.width ?? 200, h: n.measured?.height ?? 100 });
     }
-    const ports = computePorts(rects, model.relationships);
-    // Every line is routed with right angles around the entities and away from other lines.
-    const routes = new Map<string, Pt[]>();
-    const occupied: Seg[] = [];
-    for (const r of model.relationships) {
-      if (r.source.entityId === r.target.entityId) continue;
-      const sr = rects.get(r.source.entityId);
-      const tr = rects.get(r.target.entityId);
-      const pr = ports.get(r.id);
-      if (!sr || !tr || !pr) continue;
-      const A = portPoint(sr, pr.source);
-      const B = portPoint(tr, pr.target);
-      const route = routeAround(A.p, A.u, B.p, B.u, [...rects.values()], occupied) ?? elbow(A.p, A.u, B.p, B.u);
-      routes.set(r.id, route);
-      occupied.push(...segmentsOf(route));
-    }
-    nudgeOverlaps([...routes.values()]);
-    return { ports, routes };
+    return layoutDiagram(rects, model.relationships);
   }, [nodes, model.relationships]);
 
   useEffect(() => {
@@ -329,6 +313,35 @@ export default function App() {
     setTimeout(() => rf.fitView({ padding: 0.2, duration: 300 }), 50);
   };
 
+  const share = async () => {
+    const url = await shareUrl(model);
+    try {
+      await navigator.clipboard.writeText(url);
+      alert(t.shareCopied);
+    } catch {
+      prompt(t.sharePrompt, url);
+    }
+  };
+
+  // Open a shared diagram from the link (#model=…), on load and when a link is pasted into this tab.
+  const openShared = useRef<() => void>(() => {});
+  openShared.current = () => {
+    const hash = location.hash;
+    if (!hash.startsWith(SHARE_PREFIX)) return;
+    history.replaceState(null, '', location.pathname + location.search);
+    decodeModel(hash.slice(SHARE_PREFIX.length))
+      .then((m) => {
+        if ((model.entities.length === 0 && model.notes.length === 0) || confirm(t.shareOpenConfirm)) loadModel(m);
+      })
+      .catch(() => alert(t.shareBroken));
+  };
+  useEffect(() => {
+    const onHash = () => openShared.current();
+    onHash();
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
+
   const exportAs = async (format: 'png' | 'svg') => {
     setExportOpen(false);
     select(null);
@@ -416,6 +429,9 @@ export default function App() {
           </button>
           <button onClick={saveJson} title={t.saveTitle}>
             {t.save}
+          </button>
+          <button onClick={share} title={t.shareTitle}>
+            {t.share}
           </button>
           <div className="menu">
             <button onClick={() => setExportOpen((v) => !v)} aria-expanded={exportOpen}>

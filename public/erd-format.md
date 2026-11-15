@@ -5,6 +5,24 @@ ERD Designer (https://matbcvo.github.io/erd-designer/) saves models as JSON. Ope
 - Full example using every feature: https://matbcvo.github.io/erd-designer/example.erd.json
 - This document: https://matbcvo.github.io/erd-designer/erd-format.md
 
+## Share links
+
+The **Share** button copies a link that carries the whole model in the URL fragment (never sent to the server):
+
+```
+https://matbcvo.github.io/erd-designer/#model=<data>
+```
+
+`<data>` is the model JSON, compressed with raw DEFLATE (no zlib header) and encoded as base64url without padding. To read one, for example in Python:
+
+```python
+import base64, json, zlib
+data = link.split("#model=", 1)[1]
+model = json.loads(zlib.decompress(base64.urlsafe_b64decode(data + "=" * (-len(data) % 4)), -15))
+```
+
+To make a link for a model, do the reverse: `zlib.compressobj(9, zlib.DEFLATED, -15)`, then base64url-encode and strip the `=` padding.
+
 ## Top level
 
 ```json

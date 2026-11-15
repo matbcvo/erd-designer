@@ -40,6 +40,7 @@ Data types can be written as SQL types (`VARCHAR(100)`, `DECIMAL(10,2)`, `TIMEST
 | Multi-select | Shift-drag a box, or Ctrl/Cmd-click |
 | Undo / redo | Ctrl+Z / Ctrl+Shift+Z (or Ctrl+Y) |
 | Save model file | Ctrl+S |
+| Share | **Share** copies a link that contains the whole diagram; opening it loads the diagram |
 
 ## Development
 
