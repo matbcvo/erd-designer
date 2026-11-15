@@ -1,0 +1,406 @@
+{
+  "version": 1,
+  "name": "Example: university",
+  "entities": [
+    {
+      "id": "e_department",
+      "name": "Department",
+      "x": 40,
+      "y": 80,
+      "color": "#0f766e",
+      "comment": "Organisational unit that employs lecturers",
+      "attributes": [
+        {
+          "id": "a_department_id",
+          "name": "id",
+          "type": "SERIAL",
+          "pk": true,
+          "nullable": false,
+          "unique": false
+        },
+        {
+          "id": "a_department_name",
+          "name": "name",
+          "type": "VARCHAR(100)",
+          "pk": false,
+          "nullable": false,
+          "unique": true
+        }
+      ]
+    },
+    {
+      "id": "e_lecturer",
+      "name": "Lecturer",
+      "x": 420,
+      "y": 80,
+      "attributes": [
+        {
+          "id": "a_lecturer_id",
+          "name": "id",
+          "type": "SERIAL",
+          "pk": true,
+          "nullable": false,
+          "unique": false
+        },
+        {
+          "id": "a_lecturer_first_name",
+          "name": "first_name",
+          "type": "VARCHAR(50)",
+          "pk": false,
+          "nullable": false,
+          "unique": false
+        },
+        {
+          "id": "a_lecturer_last_name",
+          "name": "last_name",
+          "type": "VARCHAR(50)",
+          "pk": false,
+          "nullable": false,
+          "unique": false
+        },
+        {
+          "id": "a_lecturer_email",
+          "name": "email",
+          "type": "VARCHAR(255)",
+          "pk": false,
+          "nullable": false,
+          "unique": true
+        },
+        {
+          "id": "a_lecturer_hired_on",
+          "name": "hired_on",
+          "type": "DATE",
+          "pk": false,
+          "nullable": false,
+          "unique": false,
+          "defaultValue": "CURRENT_DATE"
+        },
+        {
+          "id": "a_lecturer_department_id",
+          "name": "department_id",
+          "type": "INTEGER",
+          "pk": false,
+          "nullable": false,
+          "unique": false,
+          "fk": {
+            "relationshipId": "r_employs",
+            "refAttributeId": "a_department_id"
+          }
+        },
+        {
+          "id": "a_lecturer_mentor_id",
+          "name": "mentor_id",
+          "type": "INTEGER",
+          "pk": false,
+          "nullable": true,
+          "unique": false,
+          "comment": "Senior lecturer who mentors this one",
+          "fk": {
+            "relationshipId": "r_mentors",
+            "refAttributeId": "a_lecturer_id"
+          }
+        }
+      ]
+    },
+    {
+      "id": "e_course",
+      "name": "Course",
+      "x": 800,
+      "y": 80,
+      "attributes": [
+        {
+          "id": "a_course_code",
+          "name": "code",
+          "type": "CHAR(6)",
+          "pk": true,
+          "nullable": false,
+          "unique": false,
+          "comment": "e.g. ITI0202"
+        },
+        {
+          "id": "a_course_title",
+          "name": "title",
+          "type": "VARCHAR(200)",
+          "pk": false,
+          "nullable": false,
+          "unique": false
+        },
+        {
+          "id": "a_course_credits",
+          "name": "credits",
+          "type": "DECIMAL(3,1)",
+          "pk": false,
+          "nullable": false,
+          "unique": false,
+          "defaultValue": "6"
+        },
+        {
+          "id": "a_course_lecturer_id",
+          "name": "lecturer_id",
+          "type": "INTEGER",
+          "pk": false,
+          "nullable": false,
+          "unique": false,
+          "fk": {
+            "relationshipId": "r_teaches",
+            "refAttributeId": "a_lecturer_id"
+          }
+        }
+      ]
+    },
+    {
+      "id": "e_student",
+      "name": "Student",
+      "x": 420,
+      "y": 400,
+      "attributes": [
+        {
+          "id": "a_student_id",
+          "name": "id",
+          "type": "SERIAL",
+          "pk": true,
+          "nullable": false,
+          "unique": false
+        },
+        {
+          "id": "a_student_code",
+          "name": "student_code",
+          "type": "VARCHAR(10)",
+          "pk": false,
+          "nullable": false,
+          "unique": true
+        },
+        {
+          "id": "a_student_first_name",
+          "name": "first_name",
+          "type": "VARCHAR(50)",
+          "pk": false,
+          "nullable": false,
+          "unique": false
+        },
+        {
+          "id": "a_student_last_name",
+          "name": "last_name",
+          "type": "VARCHAR(50)",
+          "pk": false,
+          "nullable": false,
+          "unique": false
+        },
+        {
+          "id": "a_student_birth_date",
+          "name": "birth_date",
+          "type": "DATE",
+          "pk": false,
+          "nullable": true,
+          "unique": false
+        }
+      ]
+    },
+    {
+      "id": "e_student_card",
+      "name": "Student_card",
+      "x": 40,
+      "y": 400,
+      "attributes": [
+        {
+          "id": "a_student_card_student_id",
+          "name": "student_id",
+          "type": "INTEGER",
+          "pk": true,
+          "nullable": false,
+          "unique": false,
+          "fk": {
+            "relationshipId": "r_has_card",
+            "refAttributeId": "a_student_id"
+          }
+        },
+        {
+          "id": "a_student_card_number",
+          "name": "card_number",
+          "type": "VARCHAR(20)",
+          "pk": false,
+          "nullable": false,
+          "unique": true
+        },
+        {
+          "id": "a_student_card_valid_until",
+          "name": "valid_until",
+          "type": "DATE",
+          "pk": false,
+          "nullable": false,
+          "unique": false
+        }
+      ]
+    },
+    {
+      "id": "e_enrollment",
+      "name": "Enrollment",
+      "x": 800,
+      "y": 400,
+      "comment": "Junction entity resolving the many-to-many Student–Course relationship",
+      "attributes": [
+        {
+          "id": "a_enrollment_student_id",
+          "name": "student_id",
+          "type": "INTEGER",
+          "pk": true,
+          "nullable": false,
+          "unique": false,
+          "fk": {
+            "relationshipId": "r_enrolls",
+            "refAttributeId": "a_student_id"
+          }
+        },
+        {
+          "id": "a_enrollment_course_code",
+          "name": "course_code",
+          "type": "CHAR(6)",
+          "pk": true,
+          "nullable": false,
+          "unique": false,
+          "fk": {
+            "relationshipId": "r_enrolled_in",
+            "refAttributeId": "a_course_code"
+          }
+        },
+        {
+          "id": "a_enrollment_enrolled_on",
+          "name": "enrolled_on",
+          "type": "DATE",
+          "pk": false,
+          "nullable": false,
+          "unique": false,
+          "defaultValue": "CURRENT_DATE"
+        },
+        {
+          "id": "a_enrollment_grade",
+          "name": "grade",
+          "type": "CHAR(1)",
+          "pk": false,
+          "nullable": true,
+          "unique": false
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "id": "r_employs",
+      "name": "employs",
+      "source": {
+        "entityId": "e_department",
+        "min": 1,
+        "max": "one"
+      },
+      "target": {
+        "entityId": "e_lecturer",
+        "min": 0,
+        "max": "many"
+      },
+      "identifying": false,
+      "onDelete": "RESTRICT",
+      "onUpdate": "NO ACTION"
+    },
+    {
+      "id": "r_mentors",
+      "name": "mentors",
+      "source": {
+        "entityId": "e_lecturer",
+        "min": 0,
+        "max": "one"
+      },
+      "target": {
+        "entityId": "e_lecturer",
+        "min": 0,
+        "max": "many"
+      },
+      "identifying": false,
+      "onDelete": "SET NULL",
+      "onUpdate": "NO ACTION"
+    },
+    {
+      "id": "r_teaches",
+      "name": "teaches",
+      "source": {
+        "entityId": "e_lecturer",
+        "min": 1,
+        "max": "one"
+      },
+      "target": {
+        "entityId": "e_course",
+        "min": 0,
+        "max": "many"
+      },
+      "identifying": false,
+      "onDelete": "RESTRICT",
+      "onUpdate": "NO ACTION"
+    },
+    {
+      "id": "r_has_card",
+      "name": "has",
+      "source": {
+        "entityId": "e_student",
+        "min": 1,
+        "max": "one"
+      },
+      "target": {
+        "entityId": "e_student_card",
+        "min": 0,
+        "max": "one"
+      },
+      "identifying": true,
+      "onDelete": "CASCADE",
+      "onUpdate": "NO ACTION"
+    },
+    {
+      "id": "r_enrolls",
+      "name": "takes",
+      "source": {
+        "entityId": "e_student",
+        "min": 1,
+        "max": "one"
+      },
+      "target": {
+        "entityId": "e_enrollment",
+        "min": 0,
+        "max": "many"
+      },
+      "identifying": true,
+      "onDelete": "CASCADE",
+      "onUpdate": "NO ACTION"
+    },
+    {
+      "id": "r_enrolled_in",
+      "name": "has",
+      "source": {
+        "entityId": "e_course",
+        "min": 1,
+        "max": "one"
+      },
+      "target": {
+        "entityId": "e_enrollment",
+        "min": 0,
+        "max": "many"
+      },
+      "identifying": true,
+      "onDelete": "CASCADE",
+      "onUpdate": "NO ACTION"
+    }
+  ],
+  "notes": [
+    {
+      "id": "n_title",
+      "text": "University course registration",
+      "x": 40,
+      "y": 10,
+      "fontSize": 24,
+      "bold": true
+    },
+    {
+      "id": "n_author",
+      "text": "Author: Jane Doe\nDate: 2026-11-15",
+      "x": 40,
+      "y": 650
+    }
+  ]
+}

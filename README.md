@@ -25,6 +25,8 @@ A browser-based entity–relationship diagram editor using crow's foot notation.
 - **SQL DDL** for PostgreSQL, MySQL/MariaDB, SQLite and SQL Server
 - **PNG** and **SVG** images of the whole diagram
 
+The file format is described in [public/erd-format.md](public/erd-format.md), with a complete example in [public/example.erd.json](public/example.erd.json). Both are published at https://matbcvo.github.io/erd-designer/erd-format.md and https://matbcvo.github.io/erd-designer/example.erd.json.
+
 Data types can be written as SQL types (`VARCHAR(100)`, `DECIMAL(10,2)`, `TIMESTAMP`) or as plain words such as `int`, `string`, `datetime`, `bool`, `money`; the SQL export maps them to the chosen database.
 
 ## Usage

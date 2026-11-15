@@ -4,6 +4,7 @@ import { deleteNotes, newEntity, newNote, newRelationship, resolveManyToMany, sy
 import { generateSql, mapType } from './sql';
 import { parseModel, serializeModel } from './io';
 import { validate } from './validate';
+import exampleFile from '../../public/example.erd.json?raw';
 
 describe('foreign key sync', () => {
   it('adds FK columns to the many side', () => {
@@ -170,5 +171,17 @@ describe('notes', () => {
     const note = newNote({ x: 0, y: 0 });
     const m = { ...emptyModel(), notes: [note] };
     expect(deleteNotes(m, new Set([note.id])).notes).toEqual([]);
+  });
+});
+
+describe('public example file', () => {
+  const text = exampleFile;
+
+  it('loads unchanged, so its FK columns follow the rules in erd-format.md', () => {
+    expect(serializeModel(parseModel(text)) + '\n').toBe(text);
+  });
+
+  it('has no errors or warnings', () => {
+    expect(validate(parseModel(text))).toEqual([]);
   });
 });
