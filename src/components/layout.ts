@@ -169,7 +169,7 @@ const LABEL_GAP = 12; // wanted space between two labels
 const SYMBOL_REACH = 40; // keep labels this far (along the line) from its ends, where the crow's feet are
 const LINE_CLEARANCE = 12; // wanted space between a label and other lines
 const BESIDE_COST = 40; // a label beside its line reads slightly less clearly than one on it
-const VERTICAL_COST = 25; // turned text is a little harder to read, so prefer horizontal stretches when it's close
+const VERTICAL_COST = 150; // turned text is harder to read: only turn a label when a horizontal one won't fit
 
 /**
  * Place every relationship name on its own line: near the middle where possible, but apart from
@@ -257,22 +257,25 @@ function placeLabels(rects: Map<string, Rect>, relationships: Relationship[], la
     let best: { cost: number; p: Pt; box: Box; vertical: boolean } | null = null;
     for (let d = lo; d <= hi + 0.01; d += Math.max(4, Math.min(8, (hi - lo) / 2 || 8))) {
       const at = pointAt(it, d);
-      // The label runs along the line: turned on vertical stretches.
-      const vertical = !at.horizontal;
-      const bw = vertical ? LABEL_H : w;
-      const bh = vertical ? w : LABEL_H;
-      // On the line, or just beside it (above/below, left/right) when the line itself is busy.
-      const beside = LABEL_H / 2 + 3;
-      const spots: [Pt, number][] = [
-        [at.p, 0],
-        [vertical ? { x: at.p.x + beside, y: at.p.y } : { x: at.p.x, y: at.p.y - beside }, BESIDE_COST],
-        [vertical ? { x: at.p.x - beside, y: at.p.y } : { x: at.p.x, y: at.p.y + beside }, BESIDE_COST + 1],
-      ];
-      // Prefer spots where the whole label fits on this straight stretch rather than hanging over a bend.
-      const overhang = Math.max(0, w / 2 - at.room) * 3;
-      for (const [p, extra] of spots) {
+      // Labels are horizontal; on a vertical stretch one may be turned to run along the line when a
+      // horizontal label would run into nearby lines or labels.
+      const spots: [Pt, number, boolean][] = [];
+      for (const vertical of at.horizontal ? [false] : [false, true]) {
+        // Extent of the label along / across the line here.
+        const alongLine = vertical || at.horizontal ? w : LABEL_H;
+        const across = vertical || at.horizontal ? LABEL_H : w;
+        // Prefer spots where the label fits on this straight stretch rather than hanging over a bend.
+        const extra = Math.max(0, alongLine / 2 - at.room) * 3 + (vertical ? VERTICAL_COST : 0);
+        // On the line, or just beside it when the line itself is busy.
+        const beside = across / 2 + 3;
+        const side = (k: number): Pt => (at.horizontal ? { x: at.p.x, y: at.p.y + k * beside } : { x: at.p.x + k * beside, y: at.p.y });
+        spots.push([at.p, extra, vertical], [side(-1), extra + BESIDE_COST, vertical], [side(1), extra + BESIDE_COST + 1, vertical]);
+      }
+      for (const [p, extra, vertical] of spots) {
+        const bw = vertical ? LABEL_H : w;
+        const bh = vertical ? w : LABEL_H;
         const box = { x: p.x - bw / 2, y: p.y - bh / 2, w: bw, h: bh };
-        let cost = Math.abs(d - it.total / 2) * 0.5 + extra + overhang + (vertical ? VERTICAL_COST : 0);
+        let cost = Math.abs(d - it.total / 2) * 0.5 + extra;
         if (best && cost >= best.cost) continue;
         for (const o of nearPlaced) {
           if (boxesOverlap(box, o, LABEL_GAP)) cost += 2000;
