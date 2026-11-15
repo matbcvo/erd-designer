@@ -22,7 +22,7 @@ import { deleteEntities, deleteNotes, deleteRelationships, emptyModel, newEntity
 import { exampleModel } from './model/example';
 import { parseModel, serializeModel } from './model/io';
 import { validate } from './model/validate';
-import { EntityNode, type EntityNodeType } from './components/EntityNode';
+import { EntityNode, RelatedEntities, type EntityNodeType } from './components/EntityNode';
 import { NoteNode, type NoteNodeType } from './components/NoteNode';
 import { RelationshipEdge, type RelationshipEdgeType } from './components/RelationshipEdge';
 import { Inspector } from './components/Inspector';
@@ -144,6 +144,22 @@ export default function App() {
     return layoutDiagram(rects, model.relationships, measureLabel, !!dragging);
   }, [nodes, model.relationships, dragging]);
 
+  // Entities whose lines are highlighted: the selected ones, and any being dragged.
+  const selectedKey = nodes
+    .filter((n) => n.type === 'entity' && n.selected)
+    .map((n) => n.id)
+    .join('|');
+  const focused = useMemo(() => new Set([...(selectedKey ? selectedKey.split('|') : []), ...(dragging ?? [])]), [selectedKey, dragging]);
+  // ...and the entities at the other end of those lines.
+  const related = useMemo(() => {
+    const out = new Set<string>();
+    for (const r of model.relationships) {
+      if (focused.has(r.source.entityId) && !focused.has(r.target.entityId)) out.add(r.target.entityId);
+      if (focused.has(r.target.entityId) && !focused.has(r.source.entityId)) out.add(r.source.entityId);
+    }
+    return out;
+  }, [focused, model.relationships]);
+
   useEffect(() => {
     const want = pendingSelect.current;
     setEdges((prev) => {
@@ -151,7 +167,7 @@ export default function App() {
       return model.relationships.map((r) => {
         const old = byId.get(r.id);
         const selected = want ? want.kind === 'relationship' && want.id === r.id : (old?.selected ?? false);
-        const highlighted = !!dragging && (dragging.has(r.source.entityId) || dragging.has(r.target.entityId));
+        const highlighted = focused.has(r.source.entityId) || focused.has(r.target.entityId);
         return {
           ...(old ?? {}),
           id: r.id,
@@ -167,7 +183,7 @@ export default function App() {
         };
       });
     });
-  }, [model.relationships, layout, dragging]);
+  }, [model.relationships, layout, focused]);
 
   // A pending programmatic selection applies to the render that follows one model change.
   useEffect(() => {
@@ -404,6 +420,7 @@ export default function App() {
 
   return (
     <I18nContext.Provider value={i18n}>
+    <RelatedEntities.Provider value={related}>
     <div className="app">
       <header className="toolbar">
         <div className="brand" title={t.appName}>
@@ -601,6 +618,7 @@ export default function App() {
 
       {showSql && <SqlDialog model={model} onClose={() => setShowSql(false)} />}
     </div>
+    </RelatedEntities.Provider>
     </I18nContext.Provider>
   );
 }

@@ -492,6 +492,10 @@ code {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
+.entity.related {
+  outline: 2px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  outline-offset: 1px;
+}
 .entity-header {
   background: var(--entity-color);
   color: var(--header-text);

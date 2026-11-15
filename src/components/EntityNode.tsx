@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { createContext, memo, useContext } from 'react';
 import { Handle, Position, useConnection, type Node, type NodeProps } from '@xyflow/react';
 import type { Entity } from '../model/types';
 import { useI18n } from '../i18n';
@@ -18,15 +18,19 @@ const SIDES = [
 
 export type EntityNodeType = Node<EntityNodeData, 'entity'>;
 
+/** Entities related to the selected (or dragged) ones; they get a soft outline. */
+export const RelatedEntities = createContext<Set<string>>(new Set());
+
 function EntityNodeImpl({ id, data, selected }: NodeProps<EntityNodeType>) {
   const { t } = useI18n();
   const connection = useConnection();
   const isConnecting = connection.inProgress;
   const { entity, fkTargets, showTypes } = data;
+  const related = useContext(RelatedEntities).has(id) && !selected;
 
   return (
     <div
-      className={`entity${selected ? ' selected' : ''}${entity.attributes.length === 0 ? ' no-attrs' : ''}`}
+      className={`entity${selected ? ' selected' : ''}${related ? ' related' : ''}${entity.attributes.length === 0 ? ' no-attrs' : ''}`}
       style={entity.color ? ({ '--entity-color': entity.color, '--header-text': '#ffffff' } as React.CSSProperties) : undefined}
       title={entity.comment}
     >
