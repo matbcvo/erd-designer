@@ -7,7 +7,15 @@ type Ports = Map<string, { source: Port; target: Port }>;
 export interface Layout {
   ports: Ports;
   routes: Map<string, Pt[]>;
+  /** Centre of each relationship's name label, and whether it runs along a vertical stretch of line. */
+  labels: Map<string, LabelSpot>;
 }
+
+export type LabelSpot = Pt & { vertical: boolean };
+
+/** Width in px of a label's text; the default is a rough estimate for the 11.5px italic label font. */
+export type MeasureText = (text: string) => number;
+const roughMeasure: MeasureText = (text) => text.length * 6.2;
 
 function routeAll(rects: Map<string, Rect>, relationships: Relationship[], ports: Ports): Map<string, Pt[]> {
   // Every line is routed with right angles around the entities and away from other lines.
@@ -95,7 +103,7 @@ function moveEnd(route: Pt[], atStart: boolean, p: Pt, alongX: boolean): Pt[] {
  * Once routed, re-order them by where their routes actually go, so neighbouring lines don't
  * cross just outside the entity. Each side's new order is kept only if it doesn't add crossings.
  */
-function untangleEnds(rects: Map<string, Rect>, relationships: Relationship[], layout: Layout): Layout {
+function untangleEnds(rects: Map<string, Rect>, relationships: Relationship[], layout: Omit<Layout, 'labels'>): Omit<Layout, 'labels'> {
   const ports: Ports = new Map([...layout.ports].map(([id, p]) => [id, { ...p }]));
   const routes = new Map(layout.routes);
   type End = { relId: string; end: 'source' | 'target'; entityId: string };
@@ -150,8 +158,148 @@ function untangleEnds(rects: Map<string, Rect>, relationships: Relationship[], l
   return { ports, routes };
 }
 
-/** Attachment ports and right-angle routes for every relationship line (self-references excluded). */
-export function layoutDiagram(rects: Map<string, Rect>, relationships: Relationship[]): Layout {
+type Box = { x: number; y: number; w: number; h: number };
+const boxesOverlap = (a: Box, b: Box, gap = 0) =>
+  a.x < b.x + b.w + gap && b.x < a.x + a.w + gap && a.y < b.y + b.h + gap && b.y < a.y + a.h + gap;
+const boxGap = (a: Box, b: Box) => Math.hypot(Math.max(0, a.x - (b.x + b.w), b.x - (a.x + a.w)), Math.max(0, a.y - (b.y + b.h), b.y - (a.y + a.h)));
+
+const LABEL_H = 16;
+const LABEL_PAD = 10; // horizontal padding of the label plate
+const LABEL_GAP = 12; // wanted space between two labels
+const SYMBOL_REACH = 40; // keep labels this far (along the line) from its ends, where the crow's feet are
+const LINE_CLEARANCE = 12; // wanted space between a label and other lines
+const BESIDE_COST = 40; // a label beside its line reads slightly less clearly than one on it
+const VERTICAL_COST = 25; // turned text is a little harder to read, so prefer horizontal stretches when it's close
+
+/**
+ * Place every relationship name on its own line: near the middle where possible, but apart from
+ * other labels and off entities, crow's foot symbols and other lines.
+ */
+function placeLabels(rects: Map<string, Rect>, relationships: Relationship[], layout: Omit<Layout, 'labels'>, measure: MeasureText): Map<string, LabelSpot> {
+  const labels = new Map<string, LabelSpot>();
+  const placed: Box[] = [];
+  const entities = [...rects.values()];
+  // Crow's foot symbols of every line end.
+  const symbols: Box[] = [];
+  for (const r of relationships) {
+    const pr = layout.ports.get(r.id);
+    if (!pr || !layout.routes.has(r.id)) continue;
+    for (const end of ['source', 'target'] as const) {
+      const rect = rects.get(r[end].entityId);
+      if (!rect) continue;
+      const { p, u } = portPoint(rect, pr[end]);
+      const x2 = p.x + u.x * 34;
+      const y2 = p.y + u.y * 34;
+      symbols.push({ x: Math.min(p.x, x2) - (u.x ? 0 : 11), y: Math.min(p.y, y2) - (u.y ? 0 : 11), w: Math.abs(x2 - p.x) || 22, h: Math.abs(y2 - p.y) || 22 });
+    }
+  }
+  // Self-reference labels sit at the corner of their loop (see RelationshipEdge).
+  for (const r of relationships) {
+    const rect = rects.get(r.source.entityId);
+    if (r.source.entityId !== r.target.entityId || !r.name.trim() || !rect) continue;
+    const w = measure(r.name) + LABEL_PAD;
+    placed.push({ x: rect.x + rect.w + 46 - w / 2, y: rect.y - 46 - LABEL_H / 2, w, h: LABEL_H });
+  }
+  const segs = new Map([...layout.routes].map(([id, pts]) => [id, segmentsOf(pts)]));
+
+  type Item = { id: string; name: string; pts: Pt[]; lens: number[]; total: number };
+  const items: Item[] = [];
+  for (const r of relationships) {
+    const pts = layout.routes.get(r.id);
+    if (!pts || !r.name.trim()) continue;
+    const lens = pts.slice(1).map((p, i) => Math.abs(p.x - pts[i].x) + Math.abs(p.y - pts[i].y));
+    items.push({ id: r.id, name: r.name, pts, lens, total: lens.reduce((a, b) => a + b, 0) });
+  }
+  // Lines with the least room choose first.
+  items.sort((a, b) => a.total - b.total);
+
+  /** Point at distance d along the line, whether that stretch is horizontal, and the room left before its bends. */
+  const pointAt = (it: Item, d: number): { p: Pt; horizontal: boolean; room: number } => {
+    for (let i = 0; i < it.lens.length; i++) {
+      if (d <= it.lens[i] || i === it.lens.length - 1) {
+        const t = it.lens[i] ? Math.min(1, d / it.lens[i]) : 0;
+        const a = it.pts[i];
+        const b = it.pts[i + 1];
+        const room = Math.min(d, it.lens[i] - d);
+        return { p: { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t }, horizontal: Math.abs(a.y - b.y) < 0.5, room };
+      }
+      d -= it.lens[i];
+    }
+    return { p: it.pts[it.pts.length - 1], horizontal: true, room: 0 };
+  };
+  const otherSegs = (it: Item, area: Box) => {
+    const out: Box[] = [];
+    for (const [id, ss] of segs) {
+      if (id === it.id) continue;
+      for (const s of ss) {
+        const sb = s.horizontal ? { x: s.from, y: s.at, w: s.to - s.from, h: 0 } : { x: s.at, y: s.from, w: 0, h: s.to - s.from };
+        if (boxesOverlap(sb, area)) out.push(sb);
+      }
+    }
+    return out;
+  };
+
+  for (const it of items) {
+    const w = measure(it.name) + LABEL_PAD;
+    // Only things near this line can matter.
+    const xs = it.pts.map((p) => p.x);
+    const ys = it.pts.map((p) => p.y);
+    const reach = w / 2 + LABEL_H + 40;
+    const area = { x: Math.min(...xs) - reach, y: Math.min(...ys) - reach, w: Math.max(...xs) - Math.min(...xs) + 2 * reach, h: Math.max(...ys) - Math.min(...ys) + 2 * reach };
+    const near = <T extends Box>(list: T[]) => list.filter((b) => boxesOverlap(b, area));
+    const nearPlaced = near(placed);
+    const nearEntities = near(entities);
+    const nearSymbols = near(symbols);
+    const lines = otherSegs(it, area);
+
+    const lo = Math.min(SYMBOL_REACH, it.total / 2);
+    const hi = it.total - lo;
+    let best: { cost: number; p: Pt; box: Box; vertical: boolean } | null = null;
+    for (let d = lo; d <= hi + 0.01; d += Math.max(4, Math.min(8, (hi - lo) / 2 || 8))) {
+      const at = pointAt(it, d);
+      // The label runs along the line: turned on vertical stretches.
+      const vertical = !at.horizontal;
+      const bw = vertical ? LABEL_H : w;
+      const bh = vertical ? w : LABEL_H;
+      // On the line, or just beside it (above/below, left/right) when the line itself is busy.
+      const beside = LABEL_H / 2 + 3;
+      const spots: [Pt, number][] = [
+        [at.p, 0],
+        [vertical ? { x: at.p.x + beside, y: at.p.y } : { x: at.p.x, y: at.p.y - beside }, BESIDE_COST],
+        [vertical ? { x: at.p.x - beside, y: at.p.y } : { x: at.p.x, y: at.p.y + beside }, BESIDE_COST + 1],
+      ];
+      // Prefer spots where the whole label fits on this straight stretch rather than hanging over a bend.
+      const overhang = Math.max(0, w / 2 - at.room) * 3;
+      for (const [p, extra] of spots) {
+        const box = { x: p.x - bw / 2, y: p.y - bh / 2, w: bw, h: bh };
+        let cost = Math.abs(d - it.total / 2) * 0.5 + extra + overhang + (vertical ? VERTICAL_COST : 0);
+        if (best && cost >= best.cost) continue;
+        for (const o of nearPlaced) {
+          if (boxesOverlap(box, o, LABEL_GAP)) cost += 2000;
+          else cost += Math.max(0, 40 - boxGap(box, o)) * 5;
+        }
+        for (const e of nearEntities) if (boxesOverlap(box, e, 2)) cost += 2000;
+        for (const s of nearSymbols) if (boxesOverlap(box, s)) cost += 800;
+        for (const sb of lines) {
+          // Covering another line hides it (and any crossing on it); running close beside one is cramped.
+          if (boxesOverlap(box, sb)) cost += 300;
+          else cost += Math.max(0, LINE_CLEARANCE - boxGap(box, sb)) * 15;
+        }
+        if (!best || cost < best.cost) best = { cost, p, box, vertical };
+      }
+    }
+    if (best) {
+      labels.set(it.id, { ...best.p, vertical: best.vertical });
+      placed.push(best.box);
+    }
+  }
+  return labels;
+}
+
+/** Attachment ports, right-angle routes and label positions for every relationship line (self-references excluded). */
+export function layoutDiagram(rects: Map<string, Rect>, relationships: Relationship[], measure: MeasureText = roughMeasure): Layout {
   const ports = computePorts(rects, relationships);
-  return untangleEnds(rects, relationships, { ports, routes: routeAll(rects, relationships, ports) });
+  const layout = untangleEnds(rects, relationships, { ports, routes: routeAll(rects, relationships, ports) });
+  const labels = placeLabels(rects, relationships, layout, measure);
+  return { ...layout, labels };
 }

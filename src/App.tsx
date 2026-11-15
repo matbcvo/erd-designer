@@ -38,6 +38,18 @@ const NEXT_THEME: Record<Theme, Theme> = { system: 'light', light: 'dark', dark:
 
 type AppNode = EntityNodeType | NoteNodeType;
 
+/** Width of a relationship label in the label font (see .edge-label). */
+const measureLabel = (() => {
+  let ctx: CanvasRenderingContext2D | null = null;
+  return (text: string) => {
+    if (!ctx) {
+      ctx = document.createElement('canvas').getContext('2d');
+      if (ctx) ctx.font = `italic 11.5px ${getComputedStyle(document.documentElement).fontFamily}`;
+    }
+    return ctx ? ctx.measureText(text).width : text.length * 6.2;
+  };
+})();
+
 const nodeTypes = { entity: EntityNode, note: NoteNode };
 const edgeTypes = { relationship: RelationshipEdge };
 
@@ -128,7 +140,7 @@ export default function App() {
     for (const n of nodes) {
       if (n.type === 'entity') rects.set(n.id, { x: n.position.x, y: n.position.y, w: n.measured?.width ?? 200, h: n.measured?.height ?? 100 });
     }
-    return layoutDiagram(rects, model.relationships);
+    return layoutDiagram(rects, model.relationships, measureLabel);
   }, [nodes, model.relationships]);
 
   useEffect(() => {
@@ -147,7 +159,7 @@ export default function App() {
           target: r.target.entityId,
           sourceHandle: 'out-right',
           targetHandle: 'in',
-          data: { relationship: r, ports: layout.ports.get(r.id), route: layout.routes.get(r.id), highlighted },
+          data: { relationship: r, ports: layout.ports.get(r.id), route: layout.routes.get(r.id), label: layout.labels.get(r.id), highlighted },
           selected,
           // Draw highlighted lines above the others.
           zIndex: highlighted ? 1 : 0,

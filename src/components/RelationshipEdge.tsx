@@ -1,6 +1,7 @@
 import { BaseEdge, EdgeLabelRenderer, useInternalNode, type Edge, type EdgeProps, type InternalNode } from '@xyflow/react';
 import type { MaxCardinality, MinCardinality, Relationship } from '../model/types';
 import { portPoint, type Port } from './ports';
+import type { LabelSpot } from './layout';
 import { elbow, polylineMidpoint, polylinePath } from './routing';
 
 export type RelationshipEdgeData = {
@@ -9,6 +10,8 @@ export type RelationshipEdgeData = {
   ports?: { source: Port; target: Port };
   /** Right-angle route around other entities. */
   route?: Pt[];
+  /** Where the name label goes, chosen to keep labels apart (see layout.ts). */
+  label?: LabelSpot;
   /** Drawn like a selected line, e.g. while one of its entities is being dragged. */
   highlighted?: boolean;
 };
@@ -70,6 +73,7 @@ export function RelationshipEdge({ id, source, target, data, selected, markerEnd
   const u2: Pt = B.u;
   let path: string;
   let label: Pt;
+  let vertical = false;
 
   if (source === target) {
     // Self-reference: a compact loop around the top-right corner.
@@ -90,7 +94,8 @@ export function RelationshipEdge({ id, source, target, data, selected, markerEnd
     // Routes are computed for the whole diagram (see App); fall back to a simple elbow.
     const pts = route ?? elbow(p1, u1, p2, u2);
     path = polylinePath(pts, CORNER_RADIUS);
-    label = polylineMidpoint(pts);
+    label = data.label ?? polylineMidpoint(pts);
+    vertical = data.label?.vertical ?? false;
   }
 
   const a = symbol(p1, u1, rel.source.max, rel.source.min);
@@ -110,8 +115,9 @@ export function RelationshipEdge({ id, source, target, data, selected, markerEnd
       {rel.name && (
         <EdgeLabelRenderer>
           <div
-            className={`edge-label${active ? ' selected' : ''}`}
-            style={{ transform: `translate(-50%, -50%) translate(${label.x}px, ${label.y}px)` }}
+            className={`edge-label${active ? ' selected' : ''}${vertical ? ' vertical' : ''}`}
+            // Along a vertical stretch the label is turned to read bottom to top.
+            style={{ transform: `translate(${label.x}px, ${label.y}px) translate(-50%, -50%)${vertical ? ' rotate(-90deg)' : ''}` }}
           >
             {rel.name}
           </div>

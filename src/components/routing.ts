@@ -129,6 +129,47 @@ export function routeAround(p1: Pt, u1: Pt, p2: Pt, u2: Pt, obstacles: Rect[], o
   const ey = Y.indexOf(Math.round(e.y * 2) / 2);
   if (sx < 0 || sy < 0 || ex < 0 || ey < 0) return null;
 
+  // Penalties for other lines, worked out once per grid edge. hEdge[iy*W+ix]: step from X[ix] to X[ix+1]
+  // along row iy; vEdge[ix*H+iy]: step from Y[iy] to Y[iy+1] along column ix.
+  const hOverlap = new Uint8Array(W * H);
+  const vOverlap = new Uint8Array(W * H);
+  const hCross = new Uint16Array(W * H);
+  const vCross = new Uint16Array(W * H);
+  const lowerIndex = (arr: number[], v: number) => {
+    let lo = 0;
+    let hi = arr.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (arr[mid] < v) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  };
+  for (const o of occupied) {
+    // Rows/columns (along) are the lanes parallel to o; cross are perpendicular to it.
+    const [along, cross, overlap, crossings, stride] = o.horizontal ? [Y, X, hOverlap, vCross, H] : [X, Y, vOverlap, hCross, W];
+    const nCross = cross.length;
+    // Running along a lane another line already uses.
+    for (let a = lowerIndex(along, o.at - 6 + 1e-9); a < along.length && along[a] < o.at + 6; a++) {
+      for (let c = Math.max(0, lowerIndex(cross, o.from + 0.5) - 1); c < nCross - 1 && cross[c] < o.to - 0.5; c++) {
+        if (cross[c + 1] > o.from + 0.5) overlap[o.horizontal ? a * W + c : a * H + c] = 1;
+      }
+    }
+    // Crossing it: perpendicular steps whose lane lies strictly inside o and that reach o.at.
+    const lanes = cross; // perpendicular lanes run along `cross` coordinates
+    const steps = along;
+    const k = lowerIndex(steps, o.at - 0.5) - 1; // step from steps[k] to steps[k+1] reaches o.at
+    if (k < 0 || k >= steps.length - 1) continue;
+    for (let c = lowerIndex(lanes, o.from + 0.5 + 1e-9); c < lanes.length && lanes[c] < o.to - 0.5; c++) {
+      crossings[o.horizontal ? c * stride + k : c * W + k] += 1;
+    }
+  }
+
+  // Grid points and edge midpoints inside an (inflated) entity can't be used; worked out when first needed.
+  const cellBlocked = new Int8Array(W * H).fill(-1);
+  const hMidBlocked = new Int8Array(W * H).fill(-1);
+  const vMidBlocked = new Int8Array(W * H).fill(-1);
+
   const startDir = dirIndex(u1);
   const endDir = dirIndex({ x: -u2.x, y: -u2.y }); // direction of travel arriving at e
   const n = W * H * 4;
@@ -156,28 +197,26 @@ export function routeAround(p1: Pt, u1: Pt, p2: Pt, u2: Pt, obstacles: Rect[], o
       const jx = ix + DIRS[nd].x;
       const jy = iy + DIRS[nd].y;
       if (jx < 0 || jy < 0 || jx >= W || jy >= H) continue;
-      const mx = (X[ix] + X[jx]) / 2;
-      const my = (Y[iy] + Y[jy]) / 2;
-      if (inside(X[jx], Y[jy]) || inside(mx, my)) continue;
+      const cj = idx(jx, jy);
+      if (cellBlocked[cj] < 0) cellBlocked[cj] = inside(X[jx], Y[jy]) ? 1 : 0;
+      if (cellBlocked[cj]) continue;
+      const horizontalStep = nd === 0 || nd === 2;
+      const mid = horizontalStep ? iy * W + Math.min(ix, jx) : ix * H + Math.min(iy, jy);
+      const midBlocked = horizontalStep ? hMidBlocked : vMidBlocked;
+      if (midBlocked[mid] < 0) midBlocked[mid] = inside((X[ix] + X[jx]) / 2, (Y[iy] + Y[jy]) / 2) ? 1 : 0;
+      if (midBlocked[mid]) continue;
       const len = Math.abs(X[jx] - X[ix]) + Math.abs(Y[jy] - Y[iy]);
       let c = cost[st] + len + (nd === d ? 0 : BEND_PENALTY);
       if (occupied.length) {
-        const horizontal = nd === 0 || nd === 2;
-        const at = horizontal ? Y[iy] : X[ix];
-        const lo = horizontal ? Math.min(X[ix], X[jx]) : Math.min(Y[iy], Y[jy]);
-        const hi = horizontal ? Math.max(X[ix], X[jx]) : Math.max(Y[iy], Y[jy]);
-        let overlap = false;
-        for (const o of occupied) {
-          if (o.horizontal === horizontal) {
-            // Discourage running along a lane another line already uses.
-            if (!overlap && Math.abs(o.at - at) < 6 && o.from < hi - 0.5 && o.to > lo + 0.5) {
-              c += OVERLAP_PENALTY + len;
-              overlap = true;
-            }
-          } else if (o.at > lo + 0.5 && o.at <= hi + 0.5 && at > o.from + 0.5 && at < o.to - 0.5) {
-            // ...and crossing other lines. Counted where this step reaches the other line.
-            c += CROSS_PENALTY;
-          }
+        // Discourage running along a lane another line already uses, and crossing other lines.
+        if (nd === 0 || nd === 2) {
+          const e = iy * W + Math.min(ix, jx);
+          if (hOverlap[e]) c += OVERLAP_PENALTY + len;
+          c += hCross[e] * CROSS_PENALTY;
+        } else {
+          const e = ix * H + Math.min(iy, jy);
+          if (vOverlap[e]) c += OVERLAP_PENALTY + len;
+          c += vCross[e] * CROSS_PENALTY;
         }
       }
       if (jx === ex && jy === ey && nd !== endDir) c += BEND_PENALTY; // must turn once more to enter the port

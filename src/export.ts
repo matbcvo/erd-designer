@@ -155,7 +155,16 @@ function diagramToSvg(viewport: HTMLElement, bounds: Box, background: string): s
     const b = toFlow(el.getBoundingClientRect());
     const cs = getComputedStyle(el);
     out.push(`<rect x="${num(b.x)}" y="${num(b.y)}" width="${num(b.w)}" height="${num(b.h)}" rx="4" fill="${cs.backgroundColor}"/>`);
-    textOf(el, b, true);
+    if (el.classList.contains('vertical')) {
+      // Turned label: draw the text at the plate's centre, rotated to read bottom to top.
+      const cx = b.x + b.w / 2;
+      const cy = b.y + b.h / 2;
+      out.push(
+        `<text x="${num(cx)}" y="${num(cy + 0.5)}" transform="rotate(-90 ${num(cx)} ${num(cy)})" dominant-baseline="central" text-anchor="middle" font-size="${parseFloat(cs.fontSize)}"${cs.fontStyle === 'italic' ? ' font-style="italic"' : ''} fill="${cs.color}">${esc((el.textContent ?? '').trim())}</text>`,
+      );
+    } else {
+      textOf(el, b, true);
+    }
   });
 
   // Entities.
