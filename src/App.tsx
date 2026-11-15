@@ -77,6 +77,9 @@ export default function App() {
   const [selection, setSelection] = useState<Selection>(null);
   /** Entities being dragged; their lines are highlighted meanwhile. */
   const [dragging, setDragging] = useState<Set<string> | null>(null);
+  /** The pointer has rested for a moment during a drag. */
+  const [dragSettled, setDragSettled] = useState(false);
+  const settleTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [showSql, setShowSql] = useState(false);
   const [showTypes, setShowTypes] = useState(true);
   const [lang, setLang] = useState<Lang>(initialLang);
@@ -135,14 +138,22 @@ export default function App() {
   }, [model.entities, model.notes, fkTargets, showTypes]);
 
   // Attachment ports depend on where entities are, so recompute when nodes move or resize.
+  const shownLayout = useRef<{ key: string; relationships: Model['relationships']; layout: ReturnType<typeof layoutDiagram> } | null>(null);
   const layout = useMemo(() => {
     const rects = new Map<string, Rect>();
     for (const n of nodes) {
       if (n.type === 'entity') rects.set(n.id, { x: n.position.x, y: n.position.y, w: n.measured?.width ?? 200, h: n.measured?.height ?? 100 });
     }
-    // While dragging, skip the slowest clean-up so the drag stays smooth; it runs on drop.
-    return layoutDiagram(rects, model.relationships, measureLabel, !!dragging);
-  }, [nodes, model.relationships, dragging]);
+    // Dropping keeps exactly the lines shown during the drag: same positions, same lines.
+    const key = JSON.stringify([...rects]);
+    const shown = shownLayout.current;
+    if (!dragging && shown && shown.key === key && shown.relationships === model.relationships) return shown.layout;
+    // While an entity is moving, skip the slowest clean-up so the drag stays smooth. It runs as soon as
+    // the pointer rests for a moment.
+    const next = layoutDiagram(rects, model.relationships, measureLabel, !!dragging && !dragSettled);
+    shownLayout.current = { key, relationships: model.relationships, layout: next };
+    return next;
+  }, [nodes, model.relationships, dragging, dragSettled]);
 
   // Entities whose lines are highlighted: the selected ones, and any being dragged.
   const selectedKey = nodes
@@ -218,10 +229,18 @@ export default function App() {
 
   const onNodeDragStart = useCallback((_: unknown, __: unknown, dragged: AppNode[]) => {
     setDragging(new Set(dragged.map((n) => n.id)));
+    setDragSettled(false);
+  }, []);
+
+  const onNodeDrag = useCallback(() => {
+    setDragSettled(false);
+    clearTimeout(settleTimer.current);
+    settleTimer.current = setTimeout(() => setDragSettled(true), 200);
   }, []);
 
   const onNodeDragStop = useCallback(
     (_: unknown, __: unknown, dragged: AppNode[]) => {
+      clearTimeout(settleTimer.current);
       setDragging(null);
       const pos = new Map(dragged.map((n) => [n.id, n.position]));
       const moved = <T extends { id: string; x: number; y: number }>(item: T): T => {
@@ -551,6 +570,7 @@ export default function App() {
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onNodeDragStart={onNodeDragStart}
+            onNodeDrag={onNodeDrag}
             onNodeDragStop={onNodeDragStop}
             onDelete={onDelete}
             onConnect={onConnect}
