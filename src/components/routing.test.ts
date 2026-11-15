@@ -52,3 +52,16 @@ describe('router with entities close together', () => {
     for (let i = 1; i < route.length; i++) expect(hits(route[i - 1], route[i], blocker)).toBe(false);
   });
 });
+
+describe('router with facing sides close together', () => {
+  it('meets halfway instead of looping round an entity', () => {
+    // Upper entity's bottom faces the lower entity's top across a 58px gap, ports offset sideways.
+    const upper: Rect = { x: 30, y: 230, w: 210, h: 32 };
+    const lower: Rect = { x: 230, y: 320, w: 210, h: 32 };
+    const route = routeAround({ x: 200, y: 262 }, { x: 0, y: 1 }, { x: 260, y: 320 }, { x: 0, y: -1 }, [upper, lower])!;
+    expect(route).not.toBeNull();
+    // Down, across, down: no detour.
+    expect(route).toHaveLength(4);
+    expect(route.every((p) => p.y >= 262 && p.y <= 320)).toBe(true);
+  });
+});

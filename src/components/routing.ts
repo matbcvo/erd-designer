@@ -91,8 +91,14 @@ export function routeAround(p1: Pt, u1: Pt, p2: Pt, u2: Pt, obstacles: Rect[], o
     while (len > 8 && obstacles.some((r) => inRaw({ x: p.x + u.x * len, y: p.y + u.y * len }, r))) len -= 4;
     return len;
   };
-  const l1 = stubFor(p1, u1);
-  const l2 = stubFor(p2, u2);
+  let l1 = stubFor(p1, u1);
+  let l2 = stubFor(p2, u2);
+  // Sides facing each other across a gap narrower than two stubs: meet halfway with a short jog,
+  // instead of overshooting and having to loop back round one of the entities.
+  if (u1.x === -u2.x && u1.y === -u2.y) {
+    const gapBetween = (p2.x - p1.x) * u1.x + (p2.y - p1.y) * u1.y;
+    if (gapBetween > 0 && gapBetween < l1 + l2) l1 = l2 = gapBetween / 2;
+  }
   const s = { x: p1.x + u1.x * l1, y: p1.y + u1.y * l1 };
   const e = { x: p2.x + u2.x * l2, y: p2.y + u2.y * l2 };
   // Outside distance from a point to a rectangle (negative when inside).
