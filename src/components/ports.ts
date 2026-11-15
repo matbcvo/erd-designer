@@ -62,12 +62,27 @@ function pickSide(preferred: Side, self: Rect, other: Rect, blockers: Rect[]): S
   return sideCandidates(preferred, self, other).find((s) => !sideBlocked(self, s, blockers)) ?? preferred;
 }
 
+/** Minimum distance between two lines on one side, so their crow's foot symbols don't touch. */
+const MIN_PORT_GAP = 20;
+
+const padX = (r: Rect) => Math.min(14, r.w / 4);
+const padY = (r: Rect) => Math.min(10, r.h / 4);
+const horizontal = (side: Side) => side === 'top' || side === 'bottom';
+
+/** How many lines fit on a side with at least MIN_PORT_GAP between them (ports sit at i / (n + 1)). */
+export function sideCapacity(r: Rect, side: Side): number {
+  const length = horizontal(side) ? r.w - 2 * padX(r) : r.h - 2 * padY(r);
+  return Math.max(1, Math.floor(length / MIN_PORT_GAP - 1));
+}
+
 /**
  * Assign every relationship end a port so that lines sharing an entity side are spread
  * evenly along it, ordered by the position of the entity at the other end (avoids crossings).
+ * When a side gets more lines than fit, the outermost ones move round the corner to the
+ * neighbouring side, toward the entity they lead to.
  */
 export function computePorts(rects: Map<string, Rect>, relationships: Relationship[]): Map<string, { source: Port; target: Port }> {
-  type Slot = { relId: string; end: 'source' | 'target'; key: number; tie: number };
+  type Slot = { relId: string; end: 'source' | 'target'; key: number; tie: number; other?: string };
   const groups = new Map<string, Slot[]>();
   const sides = new Map<string, { source: Side; target: Side }>();
   const add = (entityId: string, side: Side, slot: Slot) => {
@@ -76,6 +91,8 @@ export function computePorts(rects: Map<string, Rect>, relationships: Relationsh
     if (g) g.push(slot);
     else groups.set(k, [slot]);
   };
+
+  const along = (side: Side, other: Rect) => (horizontal(side) ? cx(other) : cy(other));
 
   relationships.forEach((rel, index) => {
     const a = rects.get(rel.source.entityId);
@@ -94,10 +111,51 @@ export function computePorts(rects: Map<string, Rect>, relationships: Relationsh
     const sa = pickSide(fa, a, b, blockers);
     const sb = pickSide(fb, b, a, blockers);
     sides.set(rel.id, { source: sa, target: sb });
-    const along = (side: Side, other: Rect) => (side === 'top' || side === 'bottom' ? cx(other) : cy(other));
-    add(rel.source.entityId, sa, { relId: rel.id, end: 'source', key: along(sa, b), tie: index });
-    add(rel.target.entityId, sb, { relId: rel.id, end: 'target', key: along(sb, a), tie: index });
+    add(rel.source.entityId, sa, { relId: rel.id, end: 'source', key: along(sa, b), tie: index, other: rel.target.entityId });
+    add(rel.target.entityId, sb, { relId: rel.id, end: 'target', key: along(sb, a), tie: index, other: rel.source.entityId });
   });
+
+  // Move overflow from crowded sides to the neighbouring sides, fullest sides first.
+  const keys = [...groups.keys()].sort((p, q) => groups.get(q)!.length - groups.get(p)!.length);
+  for (const k of keys) {
+    const [entityId, side] = k.split('|') as [string, Side];
+    const self = rects.get(entityId)!;
+    const slots = groups.get(k)!;
+    const cap = sideCapacity(self, side);
+    if (slots.length <= cap) continue;
+    slots.sort((p, q) => p.key - q.key || p.tie - q.tie);
+    // Low end of a left/right side turns to the top; low end of a top/bottom side turns to the left.
+    const [lowSide, highSide]: [Side, Side] = horizontal(side) ? ['left', 'right'] : ['top', 'bottom'];
+    const centre = horizontal(side) ? cx(self) : cy(self);
+    const canTake = (slot: Slot, to: Side, towardLow: boolean) => {
+      if (slot.other === undefined) return false; // self-reference keeps its fixed sides
+      // Only turn toward the side the other entity is on (either side when it's level).
+      if (towardLow ? slot.key > centre : slot.key < centre) return false;
+      const blockers = [...rects].filter(([id]) => id !== entityId && id !== slot.other).map(([, r]) => r);
+      if (sideBlocked(self, to, blockers)) return false;
+      return (groups.get(`${entityId}|${to}`)?.length ?? 0) < sideCapacity(self, to);
+    };
+    // Lines moved first lead furthest away, so they take the spots furthest from the corner (no crossings).
+    const cornerAtHighEnd = side === 'right' || side === 'bottom';
+    let moved = 0;
+    const move = (slot: Slot, to: Side) => {
+      moved++;
+      add(entityId, to, { ...slot, key: along(to, rects.get(slot.other!)!), tie: cornerAtHighEnd ? moved - 1e6 : 1e6 - moved });
+      const s = sides.get(slot.relId)!;
+      sides.set(slot.relId, { ...s, [slot.end]: to });
+    };
+    while (slots.length > cap) {
+      const low = slots[0];
+      const high = slots[slots.length - 1];
+      // Move whichever end is further from the middle first.
+      const order: [Slot, Side, boolean][] =
+        centre - low.key >= high.key - centre ? [[low, lowSide, true], [high, highSide, false]] : [[high, highSide, false], [low, lowSide, true]];
+      const pick = order.find(([slot, to, towardLow]) => canTake(slot, to, towardLow));
+      if (!pick) break;
+      slots.splice(slots.indexOf(pick[0]), 1);
+      move(pick[0], pick[1]);
+    }
+  }
 
   const fractions = new Map<string, number>(); // `${relId}|${end}` -> f
   for (const slots of groups.values()) {
@@ -117,10 +175,8 @@ export function computePorts(rects: Map<string, Rect>, relationships: Relationsh
 
 /** Absolute point and outward normal for a port on a rectangle. */
 export function portPoint(r: Rect, port: Port): { p: { x: number; y: number }; u: { x: number; y: number } } {
-  const padX = Math.min(14, r.w / 4);
-  const padY = Math.min(10, r.h / 4);
-  const fx = r.x + padX + (r.w - 2 * padX) * port.f;
-  const fy = r.y + padY + (r.h - 2 * padY) * port.f;
+  const fx = r.x + padX(r) + (r.w - 2 * padX(r)) * port.f;
+  const fy = r.y + padY(r) + (r.h - 2 * padY(r)) * port.f;
   switch (port.side) {
     case 'top':
       return { p: { x: fx, y: r.y }, u: { x: 0, y: -1 } };
